@@ -1,6 +1,8 @@
 use filetime::{self, set_file_times as SetFileTimes};
 use filetime::FileTime;
 use std::fs::File;
+use std::env;
+use std::process::Command;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use dirs::home_dir;
@@ -23,6 +25,10 @@ pub struct ZapCli {
     /// Optional context to use when rendering the template.
     #[clap(short = 'c', long, value_name = "CONTEXT")]
     pub context: Option<String>,
+
+    /// Open the file with your $EDITOR
+    #[clap(short = 'o', long)]
+    pub open: bool,
 }
 
 #[derive(Error, Debug)]
@@ -37,6 +43,15 @@ pub enum ZapError {
     TemplateNotFound(PathBuf),
     #[error("Failed to set file times: {0}")]
     SetTimesError(io::Error),
+
+    #[error("EDITOR environment variable not set")]
+    EditorNotSet,
+    #[error("EDITOR command '{0}' could not be parsed (is it empty?)")]
+    EditorCommandParseError(String),
+    #[error("Failed to spawn editor '{0}': {1}")]
+    EditorSpawnFailed(String, io::Error),
+    #[error("Editor '{0}' exited with non-zero status: {1:?}")]
+    EditorExitedWithError(String, Option<i32>),
 }
 
 fn get_config_dir() -> Result<PathBuf, ZapError> {
@@ -92,4 +107,30 @@ pub fn zap(filename_str: &str, template_name: Option<&str>, context_str: Option<
         file.write_all(rendered.as_bytes())?;
     }
     Ok(())
+}
+
+pub fn open_in_editor(filepath: &str) -> Result<(), ZapError> {
+    let editor_env_var = env::var("EDITOR").map_err(|_| ZapError::EditorNotSet)?;
+
+    let mut parts = editor_env_var.split_whitespace();
+    let editor_executable = parts.next()
+        .ok_or_else(|| ZapError::EditorCommandParseError(editor_env_var.clone()))?;
+
+    let mut cmd = Command::new(editor_executable);
+    cmd.args(parts);
+    cmd.arg(filepath);
+
+    match cmd.status() {
+        Ok(status) => {
+            if status.success() {
+                Ok(())
+            } else {
+                Err(ZapError::EditorExitedWithError(
+                    editor_env_var,
+                    status.code(),
+                ))
+            }
+        }
+        Err(e) => Err(ZapError::EditorSpawnFailed(editor_env_var, e)),
+    }
 }
