@@ -7,15 +7,16 @@ touch, but with templates!
 ## Usage
 
 ```
-zap [OPTIONS] <FILENAME>
+zap [OPTIONS] [FILENAMES]...
 
 Arguments:
-  <FILENAME>
+  [FILENAMES]...
 
 Options:
-  -t, --template <TEMPLATE_NAME>  Optional template name to pre-populate the file.
-                                  Templates are sourced from ~/.config/zap/<template_name>
-  -c, --context <CONTEXT>         Optional context to use when rendering the template
+  -T, --template <TEMPLATE_NAME>  Optional template name to pre-populate the file.
+                                  Templates are sourced from ~/.config/zap/<template_name>.
+  -C, --context <CONTEXT>         Optional context to use when rendering the template
+  -o, --open                      Open the file with your $EDITOR
   -h, --help                      Print help
   -V, --version                   Print version
 ```

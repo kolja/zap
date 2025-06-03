@@ -1,17 +1,21 @@
 use filetime::{self, set_file_times as SetFileTimes};
 use filetime::FileTime;
 use std::fs::File;
+use std::io::Write;
 use std::env;
 use std::process::Command;
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use dirs::home_dir;
 
 use clap::Parser;
 use dialoguer::Confirm;
 use tera::{Context, Tera};
-use thiserror::Error;
 
+pub mod plugins;
+pub mod errors;
+use plugins::Plugins;
+use crate::errors::ZapError;
+//
 #[derive(Parser, Debug)]
 #[clap(name = "zap", author, version, about = "touch, but with templates", long_about = None)]
 pub struct ZapCli {
@@ -32,31 +36,6 @@ pub struct ZapCli {
     pub open: bool,
 }
 
-#[derive(Error, Debug)]
-pub enum ZapError {
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
-    #[error("Tera templating error: {0}")]
-    Tera(#[from] tera::Error),
-    #[error("Could not find user config directory")]
-    ConfigDirNotFound,
-    #[error("Template file not found: {0}")]
-    TemplateNotFound(PathBuf),
-    #[error("Failed to set file times: {0}")]
-    SetTimesError(io::Error),
-    #[error("Dialoguer error: {0}")]
-    Dialoguer(#[from] dialoguer::Error),
-
-    #[error("EDITOR environment variable not set")]
-    EditorNotSet,
-    #[error("EDITOR command '{0}' could not be parsed (is it empty?)")]
-    EditorCommandParseError(String),
-    #[error("Failed to spawn editor '{0}': {1}")]
-    EditorSpawnFailed(String, io::Error),
-    #[error("Editor '{0}' exited with non-zero status: {1:?}")]
-    EditorExitedWithError(String, Option<i32>),
-}
-
 fn get_config_dir() -> Result<PathBuf, ZapError> {
     let conf_dir: Option<PathBuf> = home_dir();
     conf_dir
@@ -66,7 +45,9 @@ fn get_config_dir() -> Result<PathBuf, ZapError> {
 
 fn get_template_path(template_name: &str) -> Result<PathBuf, ZapError> {
     let config_dir = get_config_dir()?;
-    Ok(config_dir.join(template_name))
+    let mut template_path = PathBuf::from(&config_dir);
+    template_path.extend(["templates", template_name]);
+    Ok(template_path)
 }
 
 /// zap: Create a file if it doesn't exist,
@@ -105,6 +86,11 @@ pub fn zap(filenames: &Vec<String>, template_name: Option<&str>, context_str: Op
             let mut tera = Tera::default();
 
             tera.add_template_file(&template_path_full, Some(tmpl_name))?;
+
+
+            let mut plugins = Plugins::new();
+            let plugins_dir = get_config_dir()?.join("plugins");
+            plugins.load_plugins_from_dir(&mut tera, &plugins_dir)?;
 
             let mut context = Context::new();
             if let Some(ctx) = &context_str {
