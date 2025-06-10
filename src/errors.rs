@@ -1,6 +1,7 @@
 
 use std::path::PathBuf;
-use std::io;
+use std::{io, fmt};
+use std::error::Error as StdError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -36,28 +37,59 @@ pub enum PluginLoadError {
 
 #[derive(Error, Debug)]
 pub enum ZapError {
-    #[error("I/O error: {0}")]
     Io(#[from] io::Error),
-    #[error("Tera templating error: {0}")]
     Tera(#[from] tera::Error),
-    #[error("Could not find user config directory")]
     ConfigDirNotFound,
-    #[error("Template file not found: {0}")]
     TemplateNotFound(PathBuf),
-    #[error("Failed to set file times: {0}")]
     SetTimesError(io::Error),
-    #[error("Dialoguer error: {0}")]
     Dialoguer(#[from] dialoguer::Error),
-
-    #[error("EDITOR environment variable not set")]
     EditorNotSet,
-    #[error("EDITOR command '{0}' could not be parsed (is it empty?)")]
     EditorCommandParseError(String),
-    #[error("Failed to spawn editor '{0}': {1}")]
     EditorSpawnFailed(String, io::Error),
-    #[error("Editor '{0}' exited with non-zero status: {1:?}")]
     EditorExitedWithError(String, Option<i32>),
-
-    #[error("Plugin system error: {0}")]
     PluginSystem(#[from] PluginLoadError),
+}
+
+fn format_tera_error_kind(kind: &tera::ErrorKind, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match kind {
+        tera::ErrorKind::Msg(s) => f.write_str(s),
+        _ => write!(f, "{:?}", kind),
+    }
+}
+
+impl fmt::Display for ZapError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ZapError::Io(err) => write!(f, "I/O error: {}", err),
+            ZapError::Tera(err) => {
+                f.write_str("Tera templating Error: ")?;
+                format_tera_error_kind(&err.kind, f)?;
+
+                if let Some(source) = err.source() {
+                    if let Some(tera_source_error) = source.downcast_ref::<tera::Error>() {
+                        f.write_str("\ncaused by:\n")?;
+                        format_tera_error_kind(&tera_source_error.kind, f)?;
+                    } else {
+                        write!(f, "\ncaused by:\n{}", source)?;
+                    }
+                }
+                Ok(())
+            }
+            ZapError::ConfigDirNotFound => write!(f, "Could not find user config directory"),
+            ZapError::TemplateNotFound(path) => write!(f, "Template file not found: {:?}", path),
+            ZapError::SetTimesError(err) => write!(f, "Failed to set file times: {}", err),
+            ZapError::Dialoguer(err) => write!(f, "Dialoguer error: {}", err),
+            ZapError::EditorNotSet => write!(f, "EDITOR environment variable not set"),
+            ZapError::EditorCommandParseError(cmd) => {
+                write!(f, "EDITOR command '{}' could not be parsed (is it empty?)", cmd)
+            }
+            ZapError::EditorSpawnFailed(cmd, err) => {
+                write!(f, "Failed to spawn editor '{}': {}", cmd, err)
+            }
+            ZapError::EditorExitedWithError(cmd, status) => {
+                write!(f, "Editor '{}' exited with non-zero status: {:?}", cmd, status)
+            }
+            ZapError::PluginSystem(err) => write!(f, "Plugin system error: {}", err),
+        }
+    }
 }
