@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g., v0.1.0). If empty, a dev draft release is created (e.g., zap-dev-<short_sha>).'
+        description: 'Release version (e.g., v0.1.0). If empty, a dev draft release is created (e.g., dev-<short_sha>).'
         required: false
         type: string
 
@@ -16,46 +16,48 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     outputs:
-      tag_name: ${{ steps.create_release_step.outputs.tag_name }} # Actual tag created/used
+      tag_name: ${{ steps.release_vars.outputs.tag_name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Fetch all history to create an annotated tag
 
-      - name: Calculate Release Tag and Name
+      - name: Determine Release Version
         id: release_vars
         run: |
-          VERSION_INPUT="${{ inputs.version }}"
-          if [[ -z "$VERSION_INPUT" ]]; then
-            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          if [[ -z "${{ inputs.version }}" ]]; then
+            SHORT_SHA=$(git rev-parse --short HEAD)
             echo "TAG_NAME=dev-${SHORT_SHA}" >> $GITHUB_OUTPUT
-            echo "RELEASE_NAME=Development Build (zap-dev-${SHORT_SHA})" >> $GITHUB_OUTPUT
+            echo "RELEASE_NAME=Development Build (dev-${SHORT_SHA})" >> $GITHUB_OUTPUT
             echo "IS_PRERELEASE=true" >> $GITHUB_OUTPUT
           else
-            echo "TAG_NAME=${VERSION_INPUT}" >> $GITHUB_OUTPUT
-            echo "RELEASE_NAME=Release ${VERSION_INPUT}" >> $GITHUB_OUTPUT
-            echo "IS_PRERELEASE=false" >> $GITHUB_OUTPUT # Or determine based on version format, e.g. -rc, -beta
+            echo "TAG_NAME=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "RELEASE_NAME=Release ${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "IS_PRERELEASE=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Create Annotated Git Tag
+        run: |
+          TAG_NAME="${{ steps.release_vars.outputs.TAG_NAME }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
+          git push origin "$TAG_NAME"
+
       - name: Create GitHub Release
-        id: create_release_step
         uses: taiki-e/create-gh-release-action@v1
         with:
-          # Use the tag_name from the previous step.
-          # create-gh-release-action will create this tag if it doesn't exist.
-          tag_name: ${{ steps.release_vars.outputs.TAG_NAME }}
-          release_name: ${{ steps.release_vars.outputs.RELEASE_NAME }}
-          body: |
+          changelog: |
             Automated release for ${{ steps.release_vars.outputs.TAG_NAME }}.
             Binaries for macOS (x86_64, aarch64) and Linux (x86_64-musl) will be attached.
+          title: ${{ steps.release_vars.outputs.RELEASE_NAME }}
           draft: true
           prerelease: ${{ steps.release_vars.outputs.IS_PRERELEASE }}
-          update_existing_release: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
   upload_assets:
-    name: Build and Upload Assets for ${{ matrix.target }}
+    name: Build and Upload Assets
     needs: create_release
     strategy:
       matrix:
@@ -83,7 +85,6 @@ jobs:
       - name: Build binary
         run: cargo build --release --target ${{ matrix.target }}
         env:
-          # Ensures static linking for musl target. Harmless for others.
           RUSTFLAGS: ${{ matrix.target == 'x86_64-unknown-linux-musl' && '-C target-feature=+crt-static' || '' }}
 
       - name: Upload Rust Binary
@@ -91,5 +92,5 @@ jobs:
         with:
           bin: zap
           tag: ${{ needs.create_release.outputs.tag_name }}
-          target: ${{ matrix.target }} # Optional; action infers if not set
+          target: ${{ matrix.target }}
           token: ${{ secrets.GITHUB_TOKEN }}
