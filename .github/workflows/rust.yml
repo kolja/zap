@@ -1,96 +1,44 @@
 name: Release
 
-on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version (e.g., v0.1.0). If empty, a dev draft release is created (e.g., dev-<short_sha>).'
-        required: false
-        type: string
-
 permissions:
   contents: write
 
+on:
+  push:
+    tags:
+      - v[0-9]+.*
+    branches:
+      - main
+  workflow_dispatch:
+
 jobs:
-  create_release:
-    name: Create GitHub Release
+  create-release:
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
-    outputs:
-      tag_name: ${{ steps.release_vars.outputs.tag_name }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: taiki-e/create-gh-release-action@v1
         with:
-          fetch-depth: 0 # Fetch all history to create an annotated tag
-
-      - name: Determine Release Version
-        id: release_vars
-        run: |
-          if [[ -z "${{ inputs.version }}" ]]; then
-            SHORT_SHA=$(git rev-parse --short HEAD)
-            echo "TAG_NAME=dev-${SHORT_SHA}" >> $GITHUB_OUTPUT
-            echo "RELEASE_NAME=Development Build (dev-${SHORT_SHA})" >> $GITHUB_OUTPUT
-            echo "IS_PRERELEASE=true" >> $GITHUB_OUTPUT
-          else
-            echo "TAG_NAME=${{ inputs.version }}" >> $GITHUB_OUTPUT
-            echo "RELEASE_NAME=Release ${{ inputs.version }}" >> $GITHUB_OUTPUT
-            echo "IS_PRERELEASE=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Create Annotated Git Tag
-        run: |
-          TAG_NAME="${{ steps.release_vars.outputs.TAG_NAME }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
-          git push origin "$TAG_NAME"
-
-      - name: Create GitHub Release
-        uses: taiki-e/create-gh-release-action@v1
-        with:
-          changelog: |
-            Automated release for ${{ steps.release_vars.outputs.TAG_NAME }}.
-            Binaries for macOS (x86_64, aarch64) and Linux (x86_64-musl) will be attached.
-          title: ${{ steps.release_vars.outputs.RELEASE_NAME }}
-          draft: true
-          prerelease: ${{ steps.release_vars.outputs.IS_PRERELEASE }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  upload_assets:
-    name: Build and Upload Assets
-    needs: create_release
+  upload-assets:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: create-release
     strategy:
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-          - target: x86_64-apple-darwin
-            os: macos-latest
           - target: aarch64-apple-darwin
             os: macos-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Install musl-tools (for static Linux binary)
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
-
-      - name: Build binary
-        run: cargo build --release --target ${{ matrix.target }}
-        env:
-          RUSTFLAGS: ${{ matrix.target == 'x86_64-unknown-linux-musl' && '-C target-feature=+crt-static' || '' }}
-
-      - name: Upload Rust Binary
-        uses: taiki-e/upload-rust-binary-action@v1
+      - uses: actions/checkout@v4
+      - if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: zap
-          tag: ${{ needs.create_release.outputs.tag_name }}
           target: ${{ matrix.target }}
           token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,6 @@
+[tasks.git-tag]
+description = "Create a new Git tag"
+workspace = false
+script = [
+  "./scripts/git-tag.sh"
+]
