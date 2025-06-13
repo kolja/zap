@@ -4,6 +4,13 @@
 
 touch, but with templates!
 
+## Installation
+
+```bash
+brew tap kolja/zap
+brew install zap
+```
+
 ## Usage
 
 ```

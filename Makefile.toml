@@ -4,3 +4,10 @@ workspace = false
 script = [
   "./scripts/git-tag.sh"
 ]
+
+[tasks.list-sha]
+description = "List sha-sum for all Assets in Release"
+workspace = false
+script = [
+  "./scripts/list-sha.sh"
+]

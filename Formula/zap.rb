@@ -1,0 +1,32 @@
+class OrcaServer < Formula
+  desc "touch, but with templates"
+  homepage "https://github.com/kolja/zap"
+  license "MIT"
+
+  VERSION = "v0.1.1"
+
+  # to figure out the latest sha sum (over in the kolja/zap repo) run:
+  # > cargo make list-sha
+  SHA256_DARWIN_ARM = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  SHA256_LINUX_X86 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+  BASE_URL = "https://github.com/kolja/zap/releases/download"
+
+  version VERSION
+
+  if OS.mac?
+    url "#{BASE_URL}/#{VERSION}/orca-aarch64-apple-darwin.tar.gz"
+    sha256 SHA256_DARWIN_ARM
+  elsif OS.linux?
+    url "#{BASE_URL}/#{VERSION}/orca-x86_64-unknown-linux-musl.tar.gz"
+    sha256 SHA256_LINUX_X86
+  end
+
+  def install
+    bin.install "zap"
+  end
+
+  test do
+    system "#{bin}/zap", "--version"
+  end
+end
