@@ -7,8 +7,8 @@ class Zap < Formula
 
   # to figure out the latest sha sum (over in the kolja/zap repo) run:
   # > cargo make list-sha
-  SHA256_DARWIN_ARM = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-  SHA256_LINUX_X86 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  SHA256_DARWIN_ARM = "55ae6727dd336632d8fc6072f8e55b2a93b15511e28d5936ce7108339be718c5"
+  SHA256_LINUX_X86 = "0b1061ea0dac7adeaf04fd0a05084b80893550a2a06cebe8d9900a23f406ece9"
 
   BASE_URL = "https://github.com/kolja/zap/releases/download"
 
