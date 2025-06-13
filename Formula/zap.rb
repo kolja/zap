@@ -1,4 +1,4 @@
-class OrcaServer < Formula
+class Zap < Formula
   desc "touch, but with templates"
   homepage "https://github.com/kolja/zap"
   license "MIT"

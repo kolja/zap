@@ -7,8 +7,8 @@ touch, but with templates!
 ## Installation
 
 ```bash
-brew tap kolja/zap
-brew install zap
+brew tap kolja/zap https://github.com/kolja/zap
+brew install kolja/zap/zap
 ```
 
 ## Usage
