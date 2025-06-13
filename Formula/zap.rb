@@ -15,10 +15,10 @@ class Zap < Formula
   version VERSION
 
   if OS.mac?
-    url "#{BASE_URL}/#{VERSION}/orca-aarch64-apple-darwin.tar.gz"
+    url "#{BASE_URL}/#{VERSION}/zap-aarch64-apple-darwin.tar.gz"
     sha256 SHA256_DARWIN_ARM
   elsif OS.linux?
-    url "#{BASE_URL}/#{VERSION}/orca-x86_64-unknown-linux-musl.tar.gz"
+    url "#{BASE_URL}/#{VERSION}/zap-x86_64-unknown-linux-musl.tar.gz"
     sha256 SHA256_LINUX_X86
   end
 
