@@ -1,11 +1,16 @@
-use clap::Parser;
 use std::process;
-use zap::{zap, open_in_editor, ZapCli};
+use clap::Parser;
+
+use zap::{
+    args::ZapCli,
+    zap,
+    open_in_editor,
+};
 
 fn main() {
     let cli = ZapCli::parse();
 
-    match zap(&cli.filenames, cli.template.as_deref(), cli.context.as_deref()) {
+    match zap(&cli) {
         Ok(()) => {
             if cli.open {
                 if let Err(e) = open_in_editor(&cli.filenames) {

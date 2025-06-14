@@ -7,34 +7,16 @@ use std::process::Command;
 use std::path::{Path, PathBuf};
 use dirs::home_dir;
 
-use clap::Parser;
+pub mod args;
+pub mod plugins;
+pub mod errors;
+
 use dialoguer::Confirm;
 use tera::{Context, Tera};
 
-pub mod plugins;
-pub mod errors;
-use plugins::Plugins;
+use crate::plugins::Plugins;
 use crate::errors::ZapError;
-//
-#[derive(Parser, Debug)]
-#[clap(name = "zap", author, version, about = "touch, but with templates", long_about = None)]
-pub struct ZapCli {
-    #[clap(value_parser)]
-    pub filenames: Vec<String>,
-
-    /// Optional template name to pre-populate the file.
-    /// Templates are sourced from ~/.config/zap/<template_name>.
-    #[clap(short = 'T', long, value_name = "TEMPLATE_NAME", verbatim_doc_comment)]
-    pub template: Option<String>,
-
-    /// Optional context to use when rendering the template.
-    #[clap(short = 'C', long, value_name = "CONTEXT")]
-    pub context: Option<String>,
-
-    /// Open the file with your $EDITOR
-    #[clap(short = 'o', long)]
-    pub open: bool,
-}
+use crate::args::ZapCli;
 
 fn get_config_dir() -> Result<PathBuf, ZapError> {
     let conf_dir: Option<PathBuf> = home_dir();
@@ -53,7 +35,13 @@ fn get_template_path(template_name: &str) -> Result<PathBuf, ZapError> {
 /// zap: Create a file if it doesn't exist,
 /// optionally populate it with text from a template.
 /// If the file exists, its modification and access times are updated.
-pub fn zap(filenames: &Vec<String>, template_name: Option<&str>, context_str: Option<&str>) -> Result<(), ZapError> {
+pub fn zap(args: &ZapCli) -> Result<(), ZapError> {
+
+    let filenames = &args.filenames;
+    let template_name = args.template.as_deref();
+    let context_str = args.context.as_deref();
+    // let access_time = args.access_time;
+    // let modification_time = args.modification_time;
 
     for filename in filenames {
 
