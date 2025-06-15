@@ -1,4 +1,4 @@
-use filetime::{self, set_file_times as SetFileTimes};
+use filetime::{self, set_file_atime, set_file_mtime};
 use filetime::FileTime;
 use std::fs::File;
 use std::io::Write;
@@ -32,25 +32,55 @@ fn get_template_path(template_name: &str) -> Result<PathBuf, ZapError> {
     Ok(template_path)
 }
 
+pub fn set_file_times(
+    path: &Path,
+    set_access: bool,
+    set_modification: bool,
+    new_time: FileTime,
+) -> Result<(), ZapError> {
+    match (set_access, set_modification) {
+        (true, true) => {
+            // Both: use the combined call for efficiency (only one syscall)
+            filetime::set_file_times(path, new_time, new_time)
+                .map_err(ZapError::SetTimesError)
+        }
+        (true, false) => {
+            set_file_atime(path, new_time)
+                .map_err(ZapError::SetTimesError)
+        }
+        (false, true) => {
+            set_file_mtime(path, new_time)
+                .map_err(ZapError::SetTimesError)
+        }
+        (false, false) => {
+            Ok(())
+        }
+    }
+}
+
 /// zap: Create a file if it doesn't exist,
 /// optionally populate it with text from a template.
 /// If the file exists, its modification and access times are updated.
-pub fn zap(args: &ZapCli) -> Result<(), ZapError> {
+pub fn zap(&ZapCli {
+    ref filenames,
+    ref template,
+    ref context,
+    access_time,
+    modification_time,
+    ..
+}: &ZapCli) -> Result<(), ZapError> {
 
-    let filenames = &args.filenames;
-    let template_name = args.template.as_deref();
-    let context_str = args.context.as_deref();
-    // let access_time = args.access_time;
-    // let modification_time = args.modification_time;
+    let template_name: Option<&str> = template.as_deref();
+    let context_str: Option<&str> = context.as_deref();
 
     for filename in filenames {
 
-        let path = Path::new(filename);
+        let path = Path::new(&filename);
         let now = FileTime::now();
 
         if path.exists() {
             if template_name.is_none() { // If no template is provided, just update the file times
-                return SetFileTimes(path, now, now).map_err(ZapError::SetTimesError);
+                set_file_times(path, access_time, modification_time, now)?;
             } else {
                 let confirmation = Confirm::new()
                     .with_prompt(format!("File '{}' already exists. Do you want to overwrite it?", filename))

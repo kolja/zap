@@ -22,10 +22,10 @@ pub struct ZapCli {
     pub open: bool,
 
     /// only update the access time
-    #[clap(short = 'a')]
+    #[clap(short = 'a', default_value_t = true)]
     pub access_time: bool,
 
     /// only update the modification time
-    #[clap(short = 'm')]
+    #[clap(short = 'm', default_value_t = true)]
     pub modification_time: bool,
 }
