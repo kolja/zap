@@ -3,12 +3,12 @@ class Zap < Formula
   homepage "https://github.com/kolja/zap"
   license "MIT"
 
-  VERSION = "v0.1.1"
+  VERSION = "v0.1.2"
 
   # to figure out the latest sha sum (over in the kolja/zap repo) run:
   # > cargo make list-sha
-  SHA256_DARWIN_ARM = "55ae6727dd336632d8fc6072f8e55b2a93b15511e28d5936ce7108339be718c5"
-  SHA256_LINUX_X86 = "0b1061ea0dac7adeaf04fd0a05084b80893550a2a06cebe8d9900a23f406ece9"
+  SHA256_DARWIN_ARM = "46b1d6978d61f5bb420bc4dabfeb3f3f800b3a588a710d6619813630f18115b3"
+  SHA256_LINUX_X86 = "7c24c9caad9d2dc5c473376866000a84e68b46795ae20e03801f901544757cfc"
 
   BASE_URL = "https://github.com/kolja/zap/releases/download"
 
