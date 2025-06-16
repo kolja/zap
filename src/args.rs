@@ -28,4 +28,8 @@ pub struct ZapCli {
     /// only update the modification time
     #[clap(short = 'm', default_value_t = true)]
     pub modification_time: bool,
+
+    /// Don't create the file if it doesn't exist
+    #[clap(short = 'c', long)]
+    pub no_create: bool,
 }

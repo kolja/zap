@@ -67,6 +67,7 @@ pub fn zap(&ZapCli {
     ref context,
     access_time,
     modification_time,
+    no_create,
     ..
 }: &ZapCli) -> Result<(), ZapError> {
 
@@ -90,6 +91,29 @@ pub fn zap(&ZapCli {
                     continue; // Skip to the next file if user doesn't agree with overwrite
                 }
             }
+        }
+
+        // should we create intermediate directories?
+        if let Some(parent) = path.parent() {
+            if parent.components().next().is_some() {
+                if !parent.exists() && !no_create {
+                    let confirmation = Confirm::new()
+                        .with_prompt(format!(
+                            "The directory {:?} doesn't exist. Create it?",
+                            parent.display()
+                        ))
+                        .default(false)
+                        .interact()?;
+
+                    if !confirmation {
+                        continue; // Skip to the next file
+                    }
+                    std::fs::create_dir_all(parent)?;
+                }
+            }
+        }
+        if !path.exists() && no_create {
+            continue; // Skip file creation if the file does not exist and no_create is true
         }
 
         let mut file = File::create(path)?;
