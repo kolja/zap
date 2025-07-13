@@ -4,6 +4,7 @@ use filetime::{self, set_file_atime, set_file_mtime};
 use std::env;
 use std::fs::File;
 use std::io::Write;
+use std::time::SystemTime;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -12,6 +13,8 @@ pub mod errors;
 pub mod parsedate;
 pub mod plugins;
 
+use anyhow::Result;
+use chrono::{DateTime, Utc};
 use dialoguer::Confirm;
 use tera::{Context, Tera};
 
@@ -41,10 +44,9 @@ pub fn set_file_times(
     new_time: FileTime,
 ) -> Result<(), ZapError> {
     match (set_access, set_modification) {
-        (true, true) => {
+        (true, true) =>
             // Both: use the combined call for efficiency (only one syscall)
-            filetime::set_file_times(path, new_time, new_time).map_err(ZapError::SetTimesError)
-        }
+            filetime::set_file_times(path, new_time, new_time).map_err(ZapError::SetTimesError),
         (true, false) => set_file_atime(path, new_time).map_err(ZapError::SetTimesError),
         (false, true) => set_file_mtime(path, new_time).map_err(ZapError::SetTimesError),
         (false, false) => Ok(()),
@@ -62,31 +64,42 @@ pub fn zap(
         access_time,
         modification_time,
         no_create,
+        ref date,
+        ref timestamp,
         ..
     }: &ZapCli,
-) -> Result<(), ZapError> {
+) -> Result<(), anyhow::Error> {
     let template_name: Option<&str> = template.as_deref();
     let context_str: Option<&str> = context.as_deref();
 
+    let new_date: DateTime<Utc>;
+
+    // After parsing, at most one of these will be `Some`.
+    if let Some(date_str) = date {
+        new_date = parsedate::parse_d_format(date_str)?;
+    } else if let Some(timestamp_str) = timestamp {
+        new_date = parsedate::parse_t_format(timestamp_str)?;
+    } else {
+        new_date = Utc::now();
+    }
+
+    let system_time: SystemTime = new_date.into();
+    let file_time = FileTime::from_system_time(system_time);
+
     for filename in filenames {
         let path = Path::new(&filename);
-        let now = FileTime::now();
 
-        if path.exists() {
-            if template_name.is_none() {
-                // If no template is provided, just update the file times
-                set_file_times(path, access_time, modification_time, now)?;
-            } else {
-                let confirmation = Confirm::new()
-                    .with_prompt(format!(
-                        "File '{}' already exists. Do you want to overwrite it?",
-                        filename
-                    ))
-                    .default(false)
-                    .interact()?;
-                if !confirmation {
-                    continue; // Skip to the next file if user doesn't agree with overwrite
-                }
+
+        if path.exists() && template_name.is_some() {
+            let confirmation = Confirm::new()
+                .with_prompt(format!(
+                    "File '{}' already exists. Do you want to overwrite it?",
+                    filename
+                ))
+                .default(false)
+                .interact()?;
+            if !confirmation {
+                continue; // Skip to the next file if user doesn't agree with overwrite
             }
         }
 
@@ -114,12 +127,13 @@ pub fn zap(
         }
 
         let mut file = File::create(path)?;
+        set_file_times(path, access_time, modification_time, file_time)?;
 
         if let Some(tmpl_name) = template_name {
             let template_path_full = get_template_path(tmpl_name)?;
 
             if !template_path_full.exists() {
-                return Err(ZapError::TemplateNotFound(template_path_full));
+                return Err(ZapError::TemplateNotFound(template_path_full).into());
             }
 
             let mut tera = Tera::default();
