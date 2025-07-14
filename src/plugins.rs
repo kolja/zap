@@ -12,6 +12,12 @@ pub struct Plugins {
     libs: Vec<Library>,
 }
 
+impl Default for Plugins {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Plugins {
     pub fn new() -> Self {
         Plugins { libs: Vec::new() }
@@ -65,7 +71,7 @@ impl Plugins {
             }
 
             self.load_plugin(tera, &path).map_err(|e| {
-                eprintln!("Warning: Failed to load plugin {:?}: {}", path, e);
+                eprintln!("Warning: Failed to load plugin {path:?}: {e}");
                 e
             })?;
         }

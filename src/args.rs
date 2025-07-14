@@ -1,5 +1,5 @@
-
 use clap::Parser;
+use clap::builder::ArgPredicate;
 
 #[derive(Parser, Debug)]
 #[clap(name = "zap", author, version, about = "touch, but with templates", long_about = None)]
@@ -30,15 +30,35 @@ pub struct ZapCli {
     pub modification_time: bool,
 
     /// Don't create the file if it doesn't exist
-    #[clap(short = 'c', long)]
+    #[clap(
+        short = 'c',
+        long,
+        default_value_if("adjust", ArgPredicate::IsPresent, "true") // -c implied if -A is used
+    )]
     pub no_create: bool,
 
     /// pass date as human readable string (RFC3339)
-    #[clap(short = 'd', long, value_name = "DATE", overrides_with = "timestamp", verbatim_doc_comment)]
+    #[clap(
+        short = 'd',
+        long,
+        value_name = "DATE",
+        overrides_with = "timestamp",
+        verbatim_doc_comment
+    )]
     pub date: Option<String>,
 
     /// pass date as POSIX compliant timestamp: [[CC]YY]MMDDhhmm[.SS]
-    #[clap(short = 't', long, value_name = "TIMESTAMP", overrides_with = "date", verbatim_doc_comment)]
+    #[clap(
+        short = 't',
+        long,
+        value_name = "TIMESTAMP",
+        overrides_with = "date",
+        verbatim_doc_comment
+    )]
     pub timestamp: Option<String>,
 
+    /// Adjust time [-][[hh]mm]SS
+    /// the `-c` flag is implied
+    #[clap(short = 'A', long, value_name = "ADJUST", verbatim_doc_comment, allow_hyphen_values = true)]
+    pub adjust: Option<String>,
 }

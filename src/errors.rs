@@ -49,7 +49,7 @@ impl fmt::Display for TeraError {
                 f.write_str("\ncaused by:\n")?;
                 format_tera_error_kind(&tera_source_error.kind, f)?;
             } else {
-                write!(f, "\ncaused by:\n{}", source)?;
+                write!(f, "\ncaused by:\n{source}")?;
             }
         }
         Ok(())
@@ -71,7 +71,7 @@ impl From<tera::Error> for TeraError {
 fn format_tera_error_kind(kind: &tera::ErrorKind, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match kind {
         tera::ErrorKind::Msg(s) => f.write_str(s),
-        _ => write!(f, "{:?}", kind),
+        _ => write!(f, "{kind:?}"),
     }
 }
 
@@ -141,6 +141,19 @@ pub enum ZapError {
         "Specified local time '{naive_datetime}' is ambiguous or non-existent due to DST or other calendar transition"
     )]
     AmbiguousOrInvalidLocalTime { naive_datetime: String },
+
+    // Time adjustment errors
+    #[error("Time adjustment would cause overflow")]
+    TimeAdjustmentOverflow,
+
+    #[error("Time adjustment would cause underflow")]
+    TimeAdjustmentUnderflow,
+
+    #[error("Failed to parse time adjustment: {0}")]
+    TimeAdjustmentParse(String),
+
+    #[error("Failed to convert between time representations")]
+    TimeConversionError,
 }
 
 // Provide a direct conversion from tera::Error to ZapError for convenience

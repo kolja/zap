@@ -45,7 +45,6 @@ pub fn parse_t_format(s: &str) -> anyhow::Result<DateTime<Utc>> {
     }
     .map_err(|_| anyhow::anyhow!("Invalid date/time format for {}", date_time_str))?;
 
-    // 3. Set the seconds and convert from a local time to UTC.
     let naive_dt = naive_dt_base
         .with_second(second)
         .ok_or_else(|| anyhow::anyhow!("Invalid second value: {}", second))?;
@@ -56,4 +55,32 @@ pub fn parse_t_format(s: &str) -> anyhow::Result<DateTime<Utc>> {
         .ok_or_else(|| anyhow::anyhow!("Failed to convert local time for {}", s))?;
 
     Ok(local_dt.with_timezone(&Utc))
+}
+
+// Parser for -A "[-][[hh]mm]SS"
+pub fn parse_adjust(s: &str) -> Result<i32, anyhow::Error> {
+
+    let sign = if s.chars().next().unwrap_or('+') == '-' {
+        -1
+    } else {
+        1
+    };
+
+    // 2, 4 or 6 digit number as string ([-][[hh]mm]SS)
+    let num = s.strip_prefix('-').unwrap_or(s);
+
+    debug_assert!(num.is_ascii() && num.len() % 2 == 0);
+
+    let sum: i32 = num.as_bytes()
+                      .chunks(2)
+                      .map(|chunk| unsafe {
+                          // This parse can be fallible. Assuming valid digits for now.
+                          std::str::from_utf8_unchecked(chunk).parse::<i32>().unwrap()
+                      })
+                      .rev() // Reverse the iterator of parsed numbers.
+                      .zip([1, 60, 3600])
+                      .map(|(val, mult)| val * mult)
+                      .sum();
+
+    Ok(sign * sum)
 }

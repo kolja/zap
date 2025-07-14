@@ -4,12 +4,12 @@ use filetime::{self, set_file_atime, set_file_mtime};
 use std::env;
 use std::fs::File;
 use std::io::Write;
-use std::time::SystemTime;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub mod args;
 pub mod errors;
+pub mod file_time_util;
 pub mod parsedate;
 pub mod plugins;
 
@@ -21,6 +21,7 @@ use tera::{Context, Tera};
 // use crate::parsedate;
 use crate::args::ZapCli;
 use crate::errors::ZapError;
+use crate::file_time_util::{AdjustableFileTime, adjust_file_times_from_metadata};
 use crate::plugins::Plugins;
 
 fn get_config_dir() -> Result<PathBuf, ZapError> {
@@ -41,14 +42,17 @@ pub fn set_file_times(
     path: &Path,
     set_access: bool,
     set_modification: bool,
-    new_time: FileTime,
+    new_atime: FileTime,
+    new_mtime: FileTime,
 ) -> Result<(), ZapError> {
     match (set_access, set_modification) {
         (true, true) =>
-            // Both: use the combined call for efficiency (only one syscall)
-            filetime::set_file_times(path, new_time, new_time).map_err(ZapError::SetTimesError),
-        (true, false) => set_file_atime(path, new_time).map_err(ZapError::SetTimesError),
-        (false, true) => set_file_mtime(path, new_time).map_err(ZapError::SetTimesError),
+        // Both: use the combined call for efficiency (only one syscall)
+        {
+            filetime::set_file_times(path, new_atime, new_mtime).map_err(ZapError::SetTimesError)
+        }
+        (true, false) => set_file_atime(path, new_atime).map_err(ZapError::SetTimesError),
+        (false, true) => set_file_mtime(path, new_mtime).map_err(ZapError::SetTimesError),
         (false, false) => Ok(()),
     }
 }
@@ -64,6 +68,7 @@ pub fn zap(
         access_time,
         modification_time,
         no_create,
+        ref adjust,
         ref date,
         ref timestamp,
         ..
@@ -83,18 +88,33 @@ pub fn zap(
         new_date = Utc::now();
     }
 
-    let system_time: SystemTime = new_date.into();
-    let file_time = FileTime::from_system_time(system_time);
+    let file_time = AdjustableFileTime::from_datetime(new_date).into_file_time();
 
     for filename in filenames {
         let path = Path::new(&filename);
 
+        if path.exists() && adjust.is_some() {
+
+            let metadata = std::fs::metadata(path)?;
+            let adjustment_str = adjust.as_deref().unwrap(); // we know it's Some here
+
+            let (adjusted_atime, adjusted_mtime) =
+                adjust_file_times_from_metadata(&metadata, adjustment_str)?;
+
+            set_file_times(
+                path,
+                access_time,
+                modification_time,
+                adjusted_atime,
+                adjusted_mtime,
+            )?;
+            continue; // Skip file creation: with the -A flag, we only adjust times
+        }
 
         if path.exists() && template_name.is_some() {
             let confirmation = Confirm::new()
                 .with_prompt(format!(
-                    "File '{}' already exists. Do you want to overwrite it?",
-                    filename
+                    "File '{filename}' already exists. Do you want to overwrite it?",
                 ))
                 .default(false)
                 .interact()?;
@@ -104,30 +124,31 @@ pub fn zap(
         }
 
         // should we create intermediate directories?
-        if let Some(parent) = path.parent() {
-            if parent.components().next().is_some() {
-                if !parent.exists() && !no_create {
-                    let confirmation = Confirm::new()
-                        .with_prompt(format!(
-                            "The directory {:?} doesn't exist. Create it?",
-                            parent.display()
-                        ))
-                        .default(false)
-                        .interact()?;
+        if let Some(parent) = path.parent()
+            && parent.components().next().is_some()
+            && !parent.exists()
+            && !no_create
+        {
+            let confirmation = Confirm::new()
+                .with_prompt(format!(
+                    "The directory {:?} doesn't exist. Create it?",
+                    parent.display()
+                ))
+                .default(false)
+                .interact()?;
 
-                    if !confirmation {
-                        continue; // Skip to the next file
-                    }
-                    std::fs::create_dir_all(parent)?;
-                }
+            if !confirmation {
+                continue; // Skip to the next file
             }
+            std::fs::create_dir_all(parent)?;
         }
+
         if !path.exists() && no_create {
             continue; // Skip file creation if the file does not exist and no_create is true
         }
 
         let mut file = File::create(path)?;
-        set_file_times(path, access_time, modification_time, file_time)?;
+        set_file_times(path, access_time, modification_time, file_time, file_time)?;
 
         if let Some(tmpl_name) = template_name {
             let template_path_full = get_template_path(tmpl_name)?;
