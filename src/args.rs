@@ -3,6 +3,14 @@ use clap::builder::ArgPredicate;
 
 #[derive(Parser, Debug)]
 #[clap(name = "zap", author, version, about = "touch, but with templates", long_about = None)]
+
+// An ArgGroup would ensure only one time_source is provided
+// but in 'touch' you can specify multiple and the last one wins.
+// #[clap(group(
+//     ArgGroup::new("time_source")
+//         .args(["date", "timestamp", "reference"]),
+// ))]
+
 pub struct ZapCli {
     #[clap(value_parser)]
     pub filenames: Vec<String>,
@@ -42,7 +50,7 @@ pub struct ZapCli {
         short = 'd',
         long,
         value_name = "DATE",
-        overrides_with = "timestamp",
+        overrides_with_all = ["timestamp", "reference"],
         verbatim_doc_comment
     )]
     pub date: Option<String>,
@@ -52,13 +60,23 @@ pub struct ZapCli {
         short = 't',
         long,
         value_name = "TIMESTAMP",
-        overrides_with = "date",
+        overrides_with_all = ["date", "reference"],
         verbatim_doc_comment
     )]
     pub timestamp: Option<String>,
 
+    /// Use access and modification times from the specified file
+    #[clap(
+        short = 'r',
+        long,
+        value_name = "REFERENCE",
+        overrides_with_all = ["date", "timestamp"],
+    )]
+
+    pub reference: Option<String>,
     /// Adjust time [-][[hh]mm]SS
     /// the `-c` flag is implied
     #[clap(short = 'A', long, value_name = "ADJUST", verbatim_doc_comment, allow_hyphen_values = true)]
     pub adjust: Option<String>,
+
 }

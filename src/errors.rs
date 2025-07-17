@@ -110,39 +110,19 @@ pub enum ZapError {
     #[error("Plugin system error: {0}")]
     PluginSystem(#[from] PluginLoadError),
 
-    // For -d format specifically, wrapping chrono's error or a generic message.
-    #[error("Invalid RFC3339 date-time string '{input}': {source}")]
-    DateTimeRfc3339 {
-        input: String,
-        #[source]
-        source: chrono::ParseError,
-    },
+    // Date and time parsing errors
 
     #[error("Invalid RFC3339 date-time string '{input}': {reason}")]
     DateTimeRfc3339Generic { input: String, reason: String },
 
-    // For -t format, which has more custom parsing logic.
-    #[error("Invalid custom date-time string '{input}' for -t format: {reason}")]
-    DateTimeTCustom { input: String, reason: String },
+    #[error("Error parsing -t option with '{input}': {reason}")]
+    ParsingTOption { input: String, reason: String },
 
-    #[error("Integer parsing failed for a date-time component: {0}")]
-    DateTimeParseInt(#[from] std::num::ParseIntError),
-
-    #[error(
-        "Date-time component '{component}' with value '{value}' is out of valid range: {details}"
-    )]
-    DateTimeComponentRange {
-        component: String,
-        value: String,
-        details: String,
-    },
-
-    #[error(
-        "Specified local time '{naive_datetime}' is ambiguous or non-existent due to DST or other calendar transition"
-    )]
-    AmbiguousOrInvalidLocalTime { naive_datetime: String },
+    #[error("Failed to parse date-time string {reason}")]
+    ParseAdjustment { reason: String },
 
     // Time adjustment errors
+
     #[error("Time adjustment would cause overflow")]
     TimeAdjustmentOverflow,
 

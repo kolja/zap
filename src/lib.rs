@@ -71,6 +71,7 @@ pub fn zap(
         ref adjust,
         ref date,
         ref timestamp,
+        ref reference,
         ..
     }: &ZapCli,
 ) -> Result<(), anyhow::Error> {
