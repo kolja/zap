@@ -13,14 +13,14 @@ pub fn parse_d_format(s: &str) -> anyhow::Result<DateTime<Utc>> {
             .from_local_datetime(&naive_dt)
             .single()
             .ok_or_else(||
-                ZapError::DateTimeRfc3339Generic {
+                ZapError::ParseRfc3339 {
                     input: s.to_string(),
                     reason: "Failed to convert local time".to_string(),
                 }
             )?;
         return Ok(local_dt.with_timezone(&Utc));
     }
-    Err(ZapError::DateTimeRfc3339Generic {
+    Err(ZapError::ParseRfc3339 {
         input: s.to_string(),
         reason: "Invalid date-time format, expected RFC3339 or YYYY-MM-DDThh:mm:SS[.frac]".to_string(),
     })?
@@ -33,7 +33,7 @@ pub fn parse_t_format(s: &str) -> anyhow::Result<DateTime<Utc>> {
         [dt] => (*dt, "0"), // No seconds provided, default to 0.
         [dt, ss] if ss.len() == 2 => (*dt, *ss),
         _ => {
-            return Err(ZapError::ParsingTOption {
+            return Err(ZapError::ParseTOption {
                 input: s.to_string(),
                 reason: format!("format must be [[CC]YY]MMDDhhmm[.SS]"),
             }
@@ -43,10 +43,7 @@ pub fn parse_t_format(s: &str) -> anyhow::Result<DateTime<Utc>> {
 
     let second = sec_str
         .parse::<u32>()
-        .map_err(|_| ZapError::ParsingTOption {
-            input: s.to_string(),
-            reason: format!("invalid seconds component: '{sec_str}'"),
-        })?;
+        .map_err(|_| ZapError::TOptionInvalidSecondString { second: sec_str.to_string() })?;
 
     let naive_dt_base =
         match date_time_str.len() {
@@ -59,35 +56,21 @@ pub fn parse_t_format(s: &str) -> anyhow::Result<DateTime<Utc>> {
             10 => NaiveDateTime::parse_from_str(date_time_str, "%y%m%d%H%M"),
             // CCYYMMDDhhmm:
             12 => NaiveDateTime::parse_from_str(date_time_str, "%Y%m%d%H%M"),
-            _ => return Err(ZapError::ParsingTOption {
-                input: s.to_string(),
-                reason: format!(
-                    "DateTime String only allowed to be 8, 10 or 12 digits in length, but is {}",
-                    date_time_str.len()
-                ),
-            }
-            .into()),
+            _ => return Err(ZapError::TOptionWrongLength { length: date_time_str.len() }.into()),
         }
-        // .map_err(|_| anyhow::anyhow!("Invalid date/time format for {}", date_time_str))?;
-        .map_err(|e| ZapError::ParsingTOption {
+        .map_err(|e| ZapError::ParseTOption {
             input: s.to_string(),
             reason: e.to_string(),
         })?;
 
     let naive_dt = naive_dt_base
         .with_second(second)
-        .ok_or_else(|| ZapError::ParsingTOption {
-            input: second.to_string(),
-            reason: format!("invalid value for 'second'"),
-        })?;
+        .ok_or_else(|| ZapError::TOptionInvalidSecond { second })?;
 
     let local_dt = Local
         .from_local_datetime(&naive_dt)
         .single()
-        .ok_or_else(|| ZapError::ParsingTOption {
-            input: second.to_string(),
-            reason: format!("Failed to convert local time for {s}"),
-        })?;
+        .ok_or_else(|| ZapError::TOptionConvertToLocal )?;
 
     Ok(local_dt.with_timezone(&Utc))
 }
@@ -109,9 +92,8 @@ pub fn parse_adjust(s: &str) -> Result<i32, anyhow::Error> {
         .step_by(2)
         .map(|i| {
             let chunk = &num[i..i + 2];
-            chunk.parse::<i32>().map_err(|e| ZapError::ParseAdjustment {
-                reason: format!("Invalid number in adjustment string: {e}"),
-            })
+            chunk.parse::<i32>()
+                 .map_err(|e| ZapError::ParseAdjustment {reason: e.to_string()})
         })
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()

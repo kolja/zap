@@ -111,18 +111,28 @@ pub enum ZapError {
     PluginSystem(#[from] PluginLoadError),
 
     // Date and time parsing errors
-
     #[error("Invalid RFC3339 date-time string '{input}': {reason}")]
-    DateTimeRfc3339Generic { input: String, reason: String },
+    ParseRfc3339 { input: String, reason: String },
 
     #[error("Error parsing -t option with '{input}': {reason}")]
-    ParsingTOption { input: String, reason: String },
+    ParseTOption { input: String, reason: String },
 
-    #[error("Failed to parse date-time string {reason}")]
+    #[error("Failed to parse date-time string '{length}'")]
+    TOptionWrongLength { length: usize },
+
+    #[error("The T Option was passed an invalid value for 'second': '{second}'")]
+    TOptionInvalidSecond { second: u32 },
+
+    #[error("The T Option was passed an invalid value for 'second': '{second}'")]
+    TOptionInvalidSecondString { second: String },
+
+    #[error("Failed to convert time from option -t to local")]
+    TOptionConvertToLocal,
+
+    #[error("Failed to convert value from -A Option to seconds: {reason}")]
     ParseAdjustment { reason: String },
 
     // Time adjustment errors
-
     #[error("Time adjustment would cause overflow")]
     TimeAdjustmentOverflow,
 
@@ -134,6 +144,9 @@ pub enum ZapError {
 
     #[error("Failed to convert between time representations")]
     TimeConversionError,
+
+    #[error("Reference file not found: {0}")]
+    ReferenceFileNotFound(String),
 }
 
 // Provide a direct conversion from tera::Error to ZapError for convenience

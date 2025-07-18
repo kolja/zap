@@ -1,5 +1,4 @@
 use dirs::home_dir;
-use filetime::FileTime;
 use filetime::{self, set_file_atime, set_file_mtime};
 use std::env;
 use std::fs::File;
@@ -14,14 +13,13 @@ pub mod parsedate;
 pub mod plugins;
 
 use anyhow::Result;
-use chrono::{DateTime, Utc};
 use dialoguer::Confirm;
 use tera::{Context, Tera};
 
 // use crate::parsedate;
 use crate::args::ZapCli;
 use crate::errors::ZapError;
-use crate::file_time_util::{AdjustableFileTime, adjust_file_times_from_metadata};
+use crate::file_time_util::{FileTimeSpec, adjust_file_times_from_metadata};
 use crate::plugins::Plugins;
 
 fn get_config_dir() -> Result<PathBuf, ZapError> {
@@ -38,22 +36,16 @@ fn get_template_path(template_name: &str) -> Result<PathBuf, ZapError> {
     Ok(template_path)
 }
 
-pub fn set_file_times(
-    path: &Path,
-    set_access: bool,
-    set_modification: bool,
-    new_atime: FileTime,
-    new_mtime: FileTime,
-) -> Result<(), ZapError> {
-    match (set_access, set_modification) {
-        (true, true) =>
+pub fn set_file_times(path: &Path, times: &FileTimeSpec) -> Result<(), ZapError> {
+    match (times.atime, times.mtime) {
+        (Some(atime), Some(mtime)) =>
         // Both: use the combined call for efficiency (only one syscall)
         {
-            filetime::set_file_times(path, new_atime, new_mtime).map_err(ZapError::SetTimesError)
+            filetime::set_file_times(path, atime, mtime).map_err(ZapError::SetTimesError)
         }
-        (true, false) => set_file_atime(path, new_atime).map_err(ZapError::SetTimesError),
-        (false, true) => set_file_mtime(path, new_mtime).map_err(ZapError::SetTimesError),
-        (false, false) => Ok(()),
+        (Some(atime), None) => set_file_atime(path, atime).map_err(ZapError::SetTimesError),
+        (None, Some(mtime)) => set_file_mtime(path, mtime).map_err(ZapError::SetTimesError),
+        (None, None) => Ok(()),
     }
 }
 
@@ -78,37 +70,39 @@ pub fn zap(
     let template_name: Option<&str> = template.as_deref();
     let context_str: Option<&str> = context.as_deref();
 
-    let new_date: DateTime<Utc>;
+    let new_times: FileTimeSpec;
 
     // After parsing, at most one of these will be `Some`.
     if let Some(date_str) = date {
-        new_date = parsedate::parse_d_format(date_str)?;
+        let parsed_date = parsedate::parse_d_format(date_str)?;
+        new_times = FileTimeSpec::from_datetime(parsed_date);
     } else if let Some(timestamp_str) = timestamp {
-        new_date = parsedate::parse_t_format(timestamp_str)?;
+        let parsed_date = parsedate::parse_t_format(timestamp_str)?;
+        new_times = FileTimeSpec::from_datetime(parsed_date);
+    } else if let Some(reference_path) = reference {
+        let ref_path = Path::new(reference_path);
+        if !ref_path.exists() {
+            return Err(ZapError::ReferenceFileNotFound(reference_path.clone()).into());
+        }
+        let metadata = std::fs::metadata(ref_path)?;
+        new_times = FileTimeSpec::from_metadata(&metadata);
     } else {
-        new_date = Utc::now();
+        new_times = FileTimeSpec::now();
     }
 
-    let file_time = AdjustableFileTime::from_datetime(new_date).into_file_time();
+    let file_times = new_times.with_flags(access_time, modification_time);
 
     for filename in filenames {
         let path = Path::new(&filename);
 
         if path.exists() && adjust.is_some() {
-
             let metadata = std::fs::metadata(path)?;
             let adjustment_str = adjust.as_deref().unwrap(); // we know it's Some here
 
-            let (adjusted_atime, adjusted_mtime) =
-                adjust_file_times_from_metadata(&metadata, adjustment_str)?;
+            let adjusted_times = adjust_file_times_from_metadata(&metadata, adjustment_str)?
+                .with_flags(access_time, modification_time);
 
-            set_file_times(
-                path,
-                access_time,
-                modification_time,
-                adjusted_atime,
-                adjusted_mtime,
-            )?;
+            set_file_times(path, &adjusted_times)?;
             continue; // Skip file creation: with the -A flag, we only adjust times
         }
 
@@ -149,7 +143,7 @@ pub fn zap(
         }
 
         let mut file = File::create(path)?;
-        set_file_times(path, access_time, modification_time, file_time, file_time)?;
+        set_file_times(path, &file_times)?;
 
         if let Some(tmpl_name) = template_name {
             let template_path_full = get_template_path(tmpl_name)?;

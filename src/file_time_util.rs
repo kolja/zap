@@ -4,6 +4,103 @@ use filetime::FileTime;
 use std::fs::Metadata;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// A specification for file times that can hold both access and modification times.
+/// Using Option allows for selective setting of either or both times.
+#[derive(Debug, Clone, Copy)]
+pub struct FileTimeSpec {
+    pub atime: Option<FileTime>,
+    pub mtime: Option<FileTime>,
+}
+
+impl FileTimeSpec {
+    /// Create a new FileTimeSpec with both atime and mtime set to the same value
+    pub fn both(time: FileTime) -> Self {
+        Self {
+            atime: Some(time),
+            mtime: Some(time),
+        }
+    }
+
+    /// Create a new FileTimeSpec with only atime set
+    pub fn access_only(time: FileTime) -> Self {
+        Self {
+            atime: Some(time),
+            mtime: None,
+        }
+    }
+
+    /// Create a new FileTimeSpec with only mtime set
+    pub fn modification_only(time: FileTime) -> Self {
+        Self {
+            atime: None,
+            mtime: Some(time),
+        }
+    }
+
+    /// Create from a DateTime<Utc>, setting both times to the same value
+    pub fn from_datetime(dt: DateTime<Utc>) -> Self {
+        let file_time = FileTime::from_unix_time(dt.timestamp(), dt.timestamp_subsec_nanos());
+        Self::both(file_time)
+    }
+
+    /// Create from current time, setting both times
+    pub fn now() -> Self {
+        Self::from_datetime(Utc::now())
+    }
+
+    /// Create from a reference file's metadata
+    pub fn from_metadata(metadata: &Metadata) -> Self {
+        Self {
+            atime: Some(FileTime::from_last_access_time(metadata)),
+            mtime: Some(FileTime::from_last_modification_time(metadata)),
+        }
+    }
+
+    /// Apply CLI flags to determine which times should be set
+    pub fn with_flags(mut self, set_access: bool, set_modification: bool) -> Self {
+        if !set_access {
+            self.atime = None;
+        }
+        if !set_modification {
+            self.mtime = None;
+        }
+        self
+    }
+
+    /// Check if any time is set
+    pub fn has_any_time(&self) -> bool {
+        self.atime.is_some() || self.mtime.is_some()
+    }
+
+    /// Apply adjustment to both times that are present
+    pub fn adjust_by_string(self, adjustment_str: &str) -> Result<Self, ZapError> {
+        let adjusted_atime = if let Some(atime) = self.atime {
+            Some(
+                AdjustableFileTime::from_file_time(atime)
+                    .adjust_by_string(adjustment_str)?
+                    .into_file_time(),
+            )
+        } else {
+            None
+        };
+
+        let adjusted_mtime = if let Some(mtime) = self.mtime {
+            Some(
+                AdjustableFileTime::from_file_time(mtime)
+                    .adjust_by_string(adjustment_str)?
+                    .into_file_time(),
+            )
+        } else {
+            None
+        };
+
+        Ok(Self {
+            atime: adjusted_atime,
+            mtime: adjusted_mtime,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct AdjustableFileTime {
     file_time: FileTime,
@@ -31,8 +128,7 @@ impl AdjustableFileTime {
 
     /// Create from a DateTime<Utc>
     pub fn from_datetime(dt: DateTime<Utc>) -> Self {
-        let file_time =
-            FileTime::from_unix_time(dt.timestamp(), dt.timestamp_subsec_nanos());
+        let file_time = FileTime::from_unix_time(dt.timestamp(), dt.timestamp_subsec_nanos());
         Self { file_time }
     }
 
@@ -125,16 +221,8 @@ impl From<AdjustableFileTime> for FileTime {
 pub fn adjust_file_times_from_metadata(
     metadata: &Metadata,
     adjustment_str: &str,
-) -> Result<(FileTime, FileTime), ZapError> {
-    let adjusted_atime = AdjustableFileTime::from_metadata_atime(metadata)
-        .adjust_by_string(adjustment_str)?
-        .into_file_time();
-
-    let adjusted_mtime = AdjustableFileTime::from_metadata_mtime(metadata)
-        .adjust_by_string(adjustment_str)?
-        .into_file_time();
-
-    Ok((adjusted_atime, adjusted_mtime))
+) -> Result<FileTimeSpec, ZapError> {
+    FileTimeSpec::from_metadata(metadata).adjust_by_string(adjustment_str)
 }
 
 #[cfg(test)]
@@ -172,5 +260,127 @@ mod tests {
 
         assert_eq!(result_dt.timestamp(), dt.timestamp() - 1800);
     }
-}
 
+    #[test]
+    fn test_file_time_spec_both() {
+        let dt = Utc.with_ymd_and_hms(2023, 1, 1, 12, 0, 0).unwrap();
+        let file_time = FileTime::from_unix_time(dt.timestamp(), dt.timestamp_subsec_nanos());
+        let spec = FileTimeSpec::both(file_time);
+
+        assert!(spec.atime.is_some());
+        assert!(spec.mtime.is_some());
+        assert_eq!(spec.atime.unwrap().unix_seconds(), dt.timestamp());
+        assert_eq!(spec.mtime.unwrap().unix_seconds(), dt.timestamp());
+    }
+
+    #[test]
+    fn test_file_time_spec_access_only() {
+        let dt = Utc.with_ymd_and_hms(2023, 1, 1, 12, 0, 0).unwrap();
+        let file_time = FileTime::from_unix_time(dt.timestamp(), dt.timestamp_subsec_nanos());
+        let spec = FileTimeSpec::access_only(file_time);
+
+        assert!(spec.atime.is_some());
+        assert!(spec.mtime.is_none());
+        assert_eq!(spec.atime.unwrap().unix_seconds(), dt.timestamp());
+    }
+
+    #[test]
+    fn test_file_time_spec_modification_only() {
+        let dt = Utc.with_ymd_and_hms(2023, 1, 1, 12, 0, 0).unwrap();
+        let file_time = FileTime::from_unix_time(dt.timestamp(), dt.timestamp_subsec_nanos());
+        let spec = FileTimeSpec::modification_only(file_time);
+
+        assert!(spec.atime.is_none());
+        assert!(spec.mtime.is_some());
+        assert_eq!(spec.mtime.unwrap().unix_seconds(), dt.timestamp());
+    }
+
+    #[test]
+    fn test_file_time_spec_from_datetime() {
+        let dt = Utc.with_ymd_and_hms(2023, 1, 1, 12, 0, 0).unwrap();
+        let spec = FileTimeSpec::from_datetime(dt);
+
+        assert!(spec.atime.is_some());
+        assert!(spec.mtime.is_some());
+        assert_eq!(spec.atime.unwrap().unix_seconds(), dt.timestamp());
+        assert_eq!(spec.mtime.unwrap().unix_seconds(), dt.timestamp());
+    }
+
+    #[test]
+    fn test_file_time_spec_with_flags() {
+        let dt = Utc.with_ymd_and_hms(2023, 1, 1, 12, 0, 0).unwrap();
+        let spec = FileTimeSpec::from_datetime(dt);
+
+        // Test setting only access time
+        let access_only = spec.with_flags(true, false);
+        assert!(access_only.atime.is_some());
+        assert!(access_only.mtime.is_none());
+
+        // Test setting only modification time
+        let mtime_only = spec.with_flags(false, true);
+        assert!(mtime_only.atime.is_none());
+        assert!(mtime_only.mtime.is_some());
+
+        // Test setting both
+        let both = spec.with_flags(true, true);
+        assert!(both.atime.is_some());
+        assert!(both.mtime.is_some());
+
+        // Test setting neither
+        let neither = spec.with_flags(false, false);
+        assert!(neither.atime.is_none());
+        assert!(neither.mtime.is_none());
+    }
+
+    #[test]
+    fn test_file_time_spec_has_any_time() {
+        let dt = Utc.with_ymd_and_hms(2023, 1, 1, 12, 0, 0).unwrap();
+        let file_time = FileTime::from_unix_time(dt.timestamp(), dt.timestamp_subsec_nanos());
+
+        let both = FileTimeSpec::both(file_time);
+        assert!(both.has_any_time());
+
+        let access_only = FileTimeSpec::access_only(file_time);
+        assert!(access_only.has_any_time());
+
+        let mtime_only = FileTimeSpec::modification_only(file_time);
+        assert!(mtime_only.has_any_time());
+
+        let neither = FileTimeSpec {
+            atime: None,
+            mtime: None,
+        };
+        assert!(!neither.has_any_time());
+    }
+
+    #[test]
+    fn test_file_time_spec_adjust_by_string() {
+        let dt = Utc.with_ymd_and_hms(2023, 1, 1, 12, 0, 0).unwrap();
+        let spec = FileTimeSpec::from_datetime(dt);
+
+        let adjusted = spec.adjust_by_string("010101").unwrap(); // 01 hour 01 minute 01 second = 3661 seconds
+        assert!(adjusted.atime.is_some());
+        assert!(adjusted.mtime.is_some());
+        assert_eq!(
+            adjusted.atime.unwrap().unix_seconds(),
+            dt.timestamp() + 3661
+        );
+        assert_eq!(
+            adjusted.mtime.unwrap().unix_seconds(),
+            dt.timestamp() + 3661
+        );
+
+        // Test with only access time set
+        let access_only = FileTimeSpec::access_only(FileTime::from_unix_time(
+            dt.timestamp(),
+            dt.timestamp_subsec_nanos(),
+        ));
+        let adjusted_access = access_only.adjust_by_string("-3001").unwrap(); // -30 minutes 01 seconds = -1801 seconds
+        assert!(adjusted_access.atime.is_some());
+        assert!(adjusted_access.mtime.is_none());
+        assert_eq!(
+            adjusted_access.atime.unwrap().unix_seconds(),
+            dt.timestamp() - 1801
+        );
+    }
+}
