@@ -12,17 +12,16 @@ pub fn parse_d_format(s: &str) -> anyhow::Result<DateTime<Utc>> {
         let local_dt = Local
             .from_local_datetime(&naive_dt)
             .single()
-            .ok_or_else(||
-                ZapError::ParseRfc3339 {
-                    input: s.to_string(),
-                    reason: "Failed to convert local time".to_string(),
-                }
-            )?;
+            .ok_or_else(|| ZapError::ParseRfc3339 {
+                input: s.to_string(),
+                reason: "Failed to convert local time".to_string(),
+            })?;
         return Ok(local_dt.with_timezone(&Utc));
     }
     Err(ZapError::ParseRfc3339 {
         input: s.to_string(),
-        reason: "Invalid date-time format, expected RFC3339 or YYYY-MM-DDThh:mm:SS[.frac]".to_string(),
+        reason: "Invalid date-time format, expected RFC3339 or YYYY-MM-DDThh:mm:SS[.frac]"
+            .to_string(),
     })?
 }
 
@@ -43,25 +42,31 @@ pub fn parse_t_format(s: &str) -> anyhow::Result<DateTime<Utc>> {
 
     let second = sec_str
         .parse::<u32>()
-        .map_err(|_| ZapError::TOptionInvalidSecondString { second: sec_str.to_string() })?;
-
-    let naive_dt_base =
-        match date_time_str.len() {
-            // MMDDhhmm: Prepend the current year and parse.
-            8 => {
-                let s_with_year = format!("{}{}", Local::now().year(), date_time_str);
-                NaiveDateTime::parse_from_str(&s_with_year, "%Y%m%d%H%M")
-            }
-            // YYMMDDhhmm: The %y format specifier correctly handles the 1969-2068 rule.
-            10 => NaiveDateTime::parse_from_str(date_time_str, "%y%m%d%H%M"),
-            // CCYYMMDDhhmm:
-            12 => NaiveDateTime::parse_from_str(date_time_str, "%Y%m%d%H%M"),
-            _ => return Err(ZapError::TOptionWrongLength { length: date_time_str.len() }.into()),
-        }
-        .map_err(|e| ZapError::ParseTOption {
-            input: s.to_string(),
-            reason: e.to_string(),
+        .map_err(|_| ZapError::TOptionInvalidSecondString {
+            second: sec_str.to_string(),
         })?;
+
+    let naive_dt_base = match date_time_str.len() {
+        // MMDDhhmm: Prepend the current year and parse.
+        8 => {
+            let s_with_year = format!("{}{}", Local::now().year(), date_time_str);
+            NaiveDateTime::parse_from_str(&s_with_year, "%Y%m%d%H%M")
+        }
+        // YYMMDDhhmm: The %y format specifier correctly handles the 1969-2068 rule.
+        10 => NaiveDateTime::parse_from_str(date_time_str, "%y%m%d%H%M"),
+        // CCYYMMDDhhmm:
+        12 => NaiveDateTime::parse_from_str(date_time_str, "%Y%m%d%H%M"),
+        _ => {
+            return Err(ZapError::TOptionWrongLength {
+                length: date_time_str.len(),
+            }
+            .into());
+        }
+    }
+    .map_err(|e| ZapError::ParseTOption {
+        input: s.to_string(),
+        reason: e.to_string(),
+    })?;
 
     let naive_dt = naive_dt_base
         .with_second(second)
@@ -70,7 +75,7 @@ pub fn parse_t_format(s: &str) -> anyhow::Result<DateTime<Utc>> {
     let local_dt = Local
         .from_local_datetime(&naive_dt)
         .single()
-        .ok_or_else(|| ZapError::TOptionConvertToLocal )?;
+        .ok_or_else(|| ZapError::TOptionConvertToLocal)?;
 
     Ok(local_dt.with_timezone(&Utc))
 }
@@ -84,16 +89,28 @@ pub fn parse_adjust(s: &str) -> Result<i32, anyhow::Error> {
     };
 
     // 2, 4 or 6 digit number as string ([-][[hh]mm]SS)
-    let num = s.strip_prefix('-').unwrap_or(s);
+    let num = s
+        .strip_prefix('-')
+        .or_else(|| s.strip_prefix('+'))
+        .unwrap_or(s);
 
-    debug_assert!(num.is_ascii() && num.len() % 2 == 0);
+    if !num.is_ascii() || num.len() % 2 != 0 || num.is_empty() || ![2, 4, 6].contains(&num.len()) {
+        return Err(ZapError::ParseAdjustment {
+            reason: format!(
+                "Invalid format '{}', expected [-][[hh]mm]SS with 2, 4, or 6 digits",
+                s
+            ),
+        }
+        .into());
+    }
 
     let sum: i32 = (0..num.len())
         .step_by(2)
         .map(|i| {
             let chunk = &num[i..i + 2];
-            chunk.parse::<i32>()
-                 .map_err(|e| ZapError::ParseAdjustment {reason: e.to_string()})
+            chunk.parse::<i32>().map_err(|e| ZapError::ParseAdjustment {
+                reason: e.to_string(),
+            })
         })
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()

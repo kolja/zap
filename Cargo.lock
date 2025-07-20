@@ -1650,6 +1650,7 @@ dependencies = [
  "lazy-regex",
  "libloading",
  "miette",
+ "tempfile",
  "tera",
  "thiserror 2.0.12",
  "toml",

@@ -52,21 +52,18 @@ pub fn set_file_times(path: &Path, times: &FileTimeSpec) -> Result<(), ZapError>
 /// zap: Create a file if it doesn't exist,
 /// optionally populate it with text from a template.
 /// If the file exists, its modification and access times are updated.
-pub fn zap(
-    &ZapCli {
-        ref filenames,
-        ref template,
-        ref context,
-        access_time,
-        modification_time,
+pub fn zap(cli: &ZapCli) -> Result<(), anyhow::Error> {
+    let ZapCli {
+        filenames,
+        template,
+        context,
         no_create,
-        ref adjust,
-        ref date,
-        ref timestamp,
-        ref reference,
+        adjust,
+        date,
+        timestamp,
+        reference,
         ..
-    }: &ZapCli,
-) -> Result<(), anyhow::Error> {
+    } = cli;
     let template_name: Option<&str> = template.as_deref();
     let context_str: Option<&str> = context.as_deref();
 
@@ -90,7 +87,8 @@ pub fn zap(
         new_times = FileTimeSpec::now();
     }
 
-    let file_times = new_times.with_flags(access_time, modification_time);
+    let (should_update_access, should_update_modification) = cli.should_update_times();
+    let file_times = new_times.with_flags(should_update_access, should_update_modification);
 
     for filename in filenames {
         let path = Path::new(&filename);
@@ -100,7 +98,7 @@ pub fn zap(
             let adjustment_str = adjust.as_deref().unwrap(); // we know it's Some here
 
             let adjusted_times = adjust_file_times_from_metadata(&metadata, adjustment_str)?
-                .with_flags(access_time, modification_time);
+                .with_flags(should_update_access, should_update_modification);
 
             set_file_times(path, &adjusted_times)?;
             continue; // Skip file creation: with the -A flag, we only adjust times
@@ -138,10 +136,17 @@ pub fn zap(
             std::fs::create_dir_all(parent)?;
         }
 
-        if !path.exists() && no_create {
+        if !path.exists() && *no_create {
             continue; // Skip file creation if the file does not exist and no_create is true
         }
 
+        // If file exists and we have no template, just update times without recreating
+        if path.exists() && template_name.is_none() {
+            set_file_times(path, &file_times)?;
+            continue;
+        }
+
+        // Create or recreate the file (for new files or when using templates)
         let mut file = File::create(path)?;
         set_file_times(path, &file_times)?;
 
