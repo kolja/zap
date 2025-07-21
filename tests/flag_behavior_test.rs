@@ -267,7 +267,7 @@ fn test_set_time_then_adjust_both_operations() {
             "run",
             "--",
             "-d",
-            "2023-01-01 12:00:00",
+            "2023-01-01T12:00:00Z",
             "-A",
             "020000", // +2 hours
             test_file.to_str().unwrap(),

@@ -147,6 +147,9 @@ pub enum ZapError {
 
     #[error("Reference file not found: {0}")]
     ReferenceFileNotFound(String),
+
+    #[error("User declined to overwrite file")]
+    UserDeclinedOverwrite,
 }
 
 // Provide a direct conversion from tera::Error to ZapError for convenience

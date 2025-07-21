@@ -85,11 +85,11 @@ fn test_set_specific_time_then_adjust() {
 
     let (atime, mtime) = get_file_times(&test_file);
 
-    // Expected time: Jan 1, 2023 01:00 (00:00 + 1 hour)
-    // Using chrono to calculate expected timestamp
-    use chrono::{TimeZone, Utc};
-    let expected_dt = Utc.with_ymd_and_hms(2023, 1, 1, 1, 0, 0).unwrap();
-    let expected_timestamp = expected_dt.timestamp() as u64;
+    // Expected time: Jan 1, 2023 01:00 in LOCAL time (00:00 local + 1 hour)
+    // The -t option parses time as local time, not UTC
+    use chrono::{Local, TimeZone};
+    let local_dt = Local.with_ymd_and_hms(2023, 1, 1, 1, 0, 0).unwrap();
+    let expected_timestamp = local_dt.timestamp() as u64;
     let expected_time = SystemTime::UNIX_EPOCH + Duration::from_secs(expected_timestamp);
 
     // Allow for small timing differences (within 2 seconds)
@@ -157,9 +157,9 @@ fn test_set_time_access_only_then_adjust_access_only() {
 
     let (new_atime, new_mtime) = get_file_times(&test_file);
 
-    // Expected access time: Jan 1, 2023 00:30 (00:00 + 30 minutes)
-    use chrono::{TimeZone, Utc};
-    let expected_dt = Utc.with_ymd_and_hms(2023, 1, 1, 0, 30, 0).unwrap();
+    // Expected access time: Jan 1, 2023 00:30 in LOCAL time (00:00 local + 30 minutes)
+    use chrono::{Local, TimeZone};
+    let expected_dt = Local.with_ymd_and_hms(2023, 1, 1, 0, 30, 0).unwrap();
     let expected_timestamp = expected_dt.timestamp() as u64;
     let expected_atime = SystemTime::UNIX_EPOCH + Duration::from_secs(expected_timestamp);
 
@@ -231,32 +231,51 @@ fn test_adjustment_only_without_initial_time_setting() {
 }
 
 #[test]
-fn test_create_with_template_then_adjust() {
+fn test_create_with_template_and_specific_time() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let test_file = temp_dir.path().join("templated.txt");
 
     // Create a simple template file for testing
-    let template_dir = temp_dir
-        .path()
-        .join(".config")
-        .join("zap")
-        .join("templates");
+    let config_dir = temp_dir.path().join(".config").join("zap");
+    let template_dir = config_dir.join("templates");
+    let plugins_dir = config_dir.join("plugins");
     std::fs::create_dir_all(&template_dir).expect("Failed to create template directory");
-    let template_file = template_dir.join("simple.txt");
+    std::fs::create_dir_all(&plugins_dir).expect("Failed to create plugins directory");
+    let template_file = template_dir.join("simple");
     std::fs::write(&template_file, "Hello, world!").expect("Failed to create template");
 
     // Ensure test file doesn't exist
     assert!(!test_file.exists());
 
-    // Run zap with template and time adjustment
+    // Calculate a future time (current time + 5 minutes) truncated to minute precision
+    use chrono::{DateTime, Datelike, Local, TimeZone, Timelike};
+    let now_datetime: DateTime<Local> = SystemTime::now().into();
+    let future_datetime = now_datetime + chrono::Duration::minutes(5);
+
+    // Truncate to minute precision (remove seconds and subseconds)
+    let future_datetime_truncated = Local
+        .with_ymd_and_hms(
+            future_datetime.year(),
+            future_datetime.month(),
+            future_datetime.day(),
+            future_datetime.hour(),
+            future_datetime.minute(),
+            0,
+        )
+        .unwrap();
+
+    let future_time = SystemTime::from(future_datetime_truncated);
+    let future_timestamp = future_datetime_truncated.format("%Y%m%d%H%M").to_string();
+
+    // Run zap with template and specific future time
     let output = Command::new("cargo")
         .args([
             "run",
             "--",
             "--template",
             "simple",
-            "-A",
-            "0500", // Adjust by +5 minutes
+            "-t",
+            &future_timestamp, // Set to specific future time
             test_file.to_str().unwrap(),
         ])
         .env("HOME", temp_dir.path()) // Point HOME to temp dir so it finds our template
@@ -277,18 +296,21 @@ fn test_create_with_template_then_adjust() {
 
     let (atime, mtime) = get_file_times(&test_file);
 
-    // Times should be current time + 5 minutes (approximately)
-    let now = SystemTime::now();
-    let expected_time_lower = now + Duration::from_secs(295); // 4m 55s
-    let expected_time_upper = now + Duration::from_secs(305); // 5m 5s
+    // Times should be approximately the future time we set (within a small tolerance)
+    let atime_diff = atime
+        .duration_since(future_time)
+        .unwrap_or_else(|_| future_time.duration_since(atime).unwrap());
+    let mtime_diff = mtime
+        .duration_since(future_time)
+        .unwrap_or_else(|_| future_time.duration_since(mtime).unwrap());
 
     assert!(
-        atime >= expected_time_lower && atime <= expected_time_upper,
-        "Access time should be approximately current time + 5 minutes"
+        atime_diff < Duration::from_secs(2),
+        "Access time should be approximately the set future time"
     );
     assert!(
-        mtime >= expected_time_lower && mtime <= expected_time_upper,
-        "Modification time should be approximately current time + 5 minutes"
+        mtime_diff < Duration::from_secs(2),
+        "Modification time should be approximately the set future time"
     );
 }
 

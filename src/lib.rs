@@ -15,7 +15,7 @@ use anyhow::Result;
 use crate::args::ZapCli;
 use crate::errors::ZapError;
 use crate::file_time_util::FileTimeSpec;
-use crate::fileaction::{Planner, open_in_editor};
+use crate::fileaction::{Planner, execute_actions, open_in_editor};
 
 fn get_config_dir() -> Result<PathBuf, ZapError> {
     let conf_dir: Option<PathBuf> = home_dir();
@@ -61,25 +61,24 @@ pub fn zap(cli: &ZapCli) -> Result<(), anyhow::Error> {
     } = cli;
 
     // Time calculation logic
-    let new_times: FileTimeSpec = if let Some(date_str) = date {
+    let explicit_times: Option<FileTimeSpec> = if let Some(date_str) = date {
         let parsed_date = parsedate::parse_d_format(date_str)?;
-        FileTimeSpec::from_datetime(parsed_date)
+        Some(FileTimeSpec::from_datetime(parsed_date))
     } else if let Some(timestamp_str) = timestamp {
         let parsed_date = parsedate::parse_t_format(timestamp_str)?;
-        FileTimeSpec::from_datetime(parsed_date)
+        Some(FileTimeSpec::from_datetime(parsed_date))
     } else if let Some(reference_path) = reference {
         let ref_path = Path::new(reference_path);
         if !ref_path.exists() {
             return Err(ZapError::ReferenceFileNotFound(reference_path.clone()).into());
         }
         let metadata = std::fs::metadata(ref_path)?;
-        FileTimeSpec::from_metadata(&metadata)
+        Some(FileTimeSpec::from_metadata(&metadata))
     } else {
-        FileTimeSpec::now()
+        None
     };
 
     let (should_update_access, should_update_modification) = cli.should_update_times();
-    let file_times = new_times.with_flags(should_update_access, should_update_modification);
 
     // Create the planner
     let planner = Planner {
@@ -95,11 +94,11 @@ pub fn zap(cli: &ZapCli) -> Result<(), anyhow::Error> {
     for filename in filenames {
         let path = Path::new(filename);
 
-        // Plan what action to take
-        let action = planner.plan(path, &file_times)?;
+        // Plan what actions to take
+        let actions = planner.plan(path, explicit_times.as_ref())?;
 
-        // Execute the action
-        action.execute(path, filename)?;
+        // Execute the actions
+        execute_actions(actions, path, filename)?;
     }
 
     // Open editor if requested
