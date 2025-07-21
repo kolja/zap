@@ -3,14 +3,6 @@ use clap::builder::ArgPredicate;
 
 #[derive(Parser, Debug)]
 #[clap(name = "zap", author, version, about = "touch, but with templates", long_about = None)]
-
-// An ArgGroup would ensure only one time_source is provided
-// but in 'touch' you can specify multiple and the last one wins.
-// #[clap(group(
-//     ArgGroup::new("time_source")
-//         .args(["date", "timestamp", "reference"]),
-// ))]
-
 pub struct ZapCli {
     #[clap(value_parser)]
     pub filenames: Vec<String>,

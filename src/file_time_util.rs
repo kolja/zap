@@ -181,7 +181,7 @@ impl AdjustableFileTime {
     }
 
     /// Convert to SystemTime for easier arithmetic operations
-    fn to_system_time(&self) -> Result<SystemTime, ZapError> {
+    fn to_system_time(self) -> Result<SystemTime, ZapError> {
         let duration_since_epoch = Duration::new(
             self.file_time.unix_seconds() as u64,
             self.file_time.nanoseconds(),

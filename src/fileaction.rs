@@ -64,7 +64,7 @@ impl<'a> Planner<'a> {
         // Priority 3: If file exists and we have a template, we need to overwrite
         if file_exists && self.template.is_some() {
             return Ok(Action::OverwriteWithTemplate {
-                times: file_times.clone(),
+                times: *file_times,
                 template_name: self.template.unwrap().to_string(),
                 context_str: self.context.map(|s| s.to_string()),
             });
@@ -73,14 +73,14 @@ impl<'a> Planner<'a> {
         // Priority 4: If file exists and no template, just update times
         if file_exists && self.template.is_none() {
             return Ok(Action::UpdateTimesOnly {
-                times: file_times.clone(),
+                times: *file_times,
             });
         }
 
         // Priority 5: If file doesn't exist and we have a template, create with template
         if !file_exists && self.template.is_some() {
             return Ok(Action::CreateWithTemplate {
-                times: file_times.clone(),
+                times: *file_times,
                 template_name: self.template.unwrap().to_string(),
                 context_str: self.context.map(|s| s.to_string()),
             });
@@ -88,7 +88,7 @@ impl<'a> Planner<'a> {
 
         // Priority 6: Default case - create empty file
         Ok(Action::CreateEmpty {
-            times: file_times.clone(),
+            times: *file_times,
         })
     }
 }
@@ -98,7 +98,7 @@ impl Action {
         match self {
             Action::Skip { reason } => {
                 // Could add logging here if needed
-                println!("Skipping {}: {}", filename, reason);
+                println!("Skipping {filename}: {reason}");
                 Ok(())
             }
 
