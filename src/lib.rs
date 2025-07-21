@@ -1,8 +1,6 @@
 use dirs::home_dir;
 use filetime::{self, set_file_atime, set_file_mtime};
-use std::env;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 pub mod args;
 pub mod errors;
@@ -17,7 +15,7 @@ use anyhow::Result;
 use crate::args::ZapCli;
 use crate::errors::ZapError;
 use crate::file_time_util::FileTimeSpec;
-use crate::fileaction::Planner;
+use crate::fileaction::{Planner, open_in_editor};
 
 fn get_config_dir() -> Result<PathBuf, ZapError> {
     let conf_dir: Option<PathBuf> = home_dir();
@@ -104,32 +102,12 @@ pub fn zap(cli: &ZapCli) -> Result<(), anyhow::Error> {
         action.execute(path, filename)?;
     }
 
-    Ok(())
-}
-
-pub fn open_in_editor(filepaths: &Vec<String>) -> Result<(), ZapError> {
-    let editor_env_var = env::var("EDITOR").map_err(|_| ZapError::EditorNotSet)?;
-
-    let mut parts = editor_env_var.split_whitespace();
-    let editor_executable = parts
-        .next()
-        .ok_or_else(|| ZapError::EditorCommandParseError(editor_env_var.clone()))?;
-
-    let mut cmd = Command::new(editor_executable);
-    cmd.args(parts);
-    cmd.args(filepaths);
-
-    match cmd.status() {
-        Ok(status) => {
-            if status.success() {
-                Ok(())
-            } else {
-                Err(ZapError::EditorExitedWithError(
-                    editor_env_var,
-                    status.code(),
-                ))
-            }
+    // Open editor if requested
+    if cli.open {
+        if let Err(e) = open_in_editor(&cli.filenames) {
+            eprintln!("Warning: Could not open editor: {e}");
         }
-        Err(e) => Err(ZapError::EditorSpawnFailed(editor_env_var, e)),
     }
+
+    Ok(())
 }

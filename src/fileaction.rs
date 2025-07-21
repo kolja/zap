@@ -219,3 +219,30 @@ impl Action {
         Ok(())
     }
 }
+
+pub fn open_in_editor(filepaths: &Vec<String>) -> Result<(), anyhow::Error> {
+    use std::env;
+    use std::process::Command;
+
+    let editor_env_var = env::var("EDITOR").map_err(|_| ZapError::EditorNotSet)?;
+
+    let mut parts = editor_env_var.split_whitespace();
+    let editor_executable = parts
+        .next()
+        .ok_or_else(|| ZapError::EditorCommandParseError(editor_env_var.clone()))?;
+
+    let mut cmd = Command::new(editor_executable);
+    cmd.args(parts);
+    cmd.args(filepaths);
+
+    match cmd.status() {
+        Ok(status) => {
+            if status.success() {
+                Ok(())
+            } else {
+                Err(ZapError::EditorExitedWithError(editor_env_var, status.code()).into())
+            }
+        }
+        Err(e) => Err(ZapError::EditorSpawnFailed(editor_env_var, e).into()),
+    }
+}

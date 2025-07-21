@@ -1,26 +1,13 @@
-use std::process;
 use clap::Parser;
+use std::process;
 
-use zap::{
-    args::ZapCli,
-    zap,
-    open_in_editor,
-};
+use zap::{args::ZapCli, zap};
 
 fn main() {
     let cli = ZapCli::parse();
 
-    match zap(&cli) {
-        Ok(()) => {
-            if cli.open {
-                if let Err(e) = open_in_editor(&cli.filenames) {
-                    eprintln!("Warning: Could not open editor: {e}");
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Error: {e}");
-            process::exit(1);
-        }
+    if let Err(e) = zap(&cli) {
+        eprintln!("Error: {e}");
+        process::exit(1);
     }
 }
