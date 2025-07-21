@@ -5,29 +5,39 @@ use dialoguer::Confirm;
 use std::path::Path;
 
 #[derive(Debug, Clone)]
-pub enum Action {
+pub enum FileOperation {
     Skip {
         reason: String,
     },
-    AdjustTimesOnly {
-        times: FileTimeSpec,
-    },
-    UpdateTimesOnly {
-        times: FileTimeSpec,
-    },
+    CreateEmpty,
     CreateWithTemplate {
-        times: FileTimeSpec,
         template_name: String,
         context_str: Option<String>,
-    },
-    CreateEmpty {
-        times: FileTimeSpec,
     },
     OverwriteWithTemplate {
-        times: FileTimeSpec,
         template_name: String,
         context_str: Option<String>,
     },
+    NoFileOperation, // File exists, no file operations needed
+}
+
+#[derive(Debug, Clone)]
+pub enum TimeOperation {
+    SetTimes {
+        times: FileTimeSpec,
+    },
+    AdjustTimes {
+        adjustment_str: String,
+        should_update_access: bool,
+        should_update_modification: bool,
+    },
+    NoTimeOperation,
+}
+
+#[derive(Debug, Clone)]
+pub struct Action {
+    pub file_op: FileOperation,
+    pub time_ops: Vec<TimeOperation>,
 }
 
 pub struct Planner<'a> {
@@ -43,99 +53,92 @@ impl<'a> Planner<'a> {
     pub fn plan(&self, path: &Path, file_times: &FileTimeSpec) -> Result<Action, ZapError> {
         let file_exists = path.exists();
 
-        // Priority 1: If file exists and we have an adjustment, only adjust times
-        if file_exists && self.adjust.is_some() {
-            let metadata = std::fs::metadata(path)?;
-            let adjustment_str = self.adjust.unwrap();
-            let adjusted_times = adjust_file_times_from_metadata(&metadata, adjustment_str)?
-                .with_flags(self.should_update_access, self.should_update_modification);
-            return Ok(Action::AdjustTimesOnly {
-                times: adjusted_times,
-            });
-        }
-
-        // Priority 2: If file doesn't exist and no_create is true, skip
-        if !file_exists && self.no_create {
-            return Ok(Action::Skip {
+        // Determine file operation
+        let file_op = if !file_exists && self.no_create {
+            FileOperation::Skip {
                 reason: "File doesn't exist and --no-create flag is set".to_string(),
-            });
-        }
-
-        // Priority 3: If file exists and we have a template, we need to overwrite
-        if file_exists && self.template.is_some() {
-            return Ok(Action::OverwriteWithTemplate {
-                times: *file_times,
+            }
+        } else if !file_exists && self.template.is_some() {
+            FileOperation::CreateWithTemplate {
                 template_name: self.template.unwrap().to_string(),
                 context_str: self.context.map(|s| s.to_string()),
-            });
-        }
-
-        // Priority 4: If file exists and no template, just update times
-        if file_exists && self.template.is_none() {
-            return Ok(Action::UpdateTimesOnly {
-                times: *file_times,
-            });
-        }
-
-        // Priority 5: If file doesn't exist and we have a template, create with template
-        if !file_exists && self.template.is_some() {
-            return Ok(Action::CreateWithTemplate {
-                times: *file_times,
+            }
+        } else if !file_exists {
+            FileOperation::CreateEmpty
+        } else if file_exists && self.template.is_some() {
+            FileOperation::OverwriteWithTemplate {
                 template_name: self.template.unwrap().to_string(),
                 context_str: self.context.map(|s| s.to_string()),
+            }
+        } else {
+            FileOperation::NoFileOperation
+        };
+
+        // Determine time operations
+        let mut time_ops = Vec::new();
+
+        // If we're skipping the file, don't do any time operations
+        if matches!(file_op, FileOperation::Skip { .. }) {
+            return Ok(Action { file_op, time_ops });
+        }
+
+        // Add time setting operation if we have explicit times or if file operations require it
+        match &file_op {
+            FileOperation::CreateEmpty
+            | FileOperation::CreateWithTemplate { .. }
+            | FileOperation::OverwriteWithTemplate { .. } => {
+                // File creation/overwrite operations always need time setting
+                time_ops.push(TimeOperation::SetTimes { times: *file_times });
+            }
+            FileOperation::NoFileOperation => {
+                // File exists and no file operations - only set times if not adjusting
+                if self.adjust.is_none() {
+                    time_ops.push(TimeOperation::SetTimes { times: *file_times });
+                }
+            }
+            FileOperation::Skip { .. } => {
+                // Already handled above
+            }
+        }
+
+        // Add adjustment operation if specified
+        if let Some(adjustment_str) = self.adjust {
+            time_ops.push(TimeOperation::AdjustTimes {
+                adjustment_str: adjustment_str.to_string(),
+                should_update_access: self.should_update_access,
+                should_update_modification: self.should_update_modification,
             });
         }
 
-        // Priority 6: Default case - create empty file
-        Ok(Action::CreateEmpty {
-            times: *file_times,
-        })
+        // If no time operations were added but we need them (file exists, no adjustment, no explicit times)
+        if time_ops.is_empty() && matches!(file_op, FileOperation::NoFileOperation) {
+            time_ops.push(TimeOperation::SetTimes { times: *file_times });
+        }
+
+        Ok(Action { file_op, time_ops })
     }
 }
 
 impl Action {
     pub fn execute(self, path: &Path, filename: &str) -> Result<(), anyhow::Error> {
-        match self {
-            Action::Skip { reason } => {
-                // Could add logging here if needed
+        // Execute file operation first
+        match &self.file_op {
+            FileOperation::Skip { reason } => {
                 println!("Skipping {filename}: {reason}");
-                Ok(())
+                return Ok(());
             }
-
-            Action::AdjustTimesOnly { times } => {
-                crate::set_file_times(path, &times)?;
-                Ok(())
-            }
-
-            Action::UpdateTimesOnly { times } => {
-                crate::set_file_times(path, &times)?;
-                Ok(())
-            }
-
-            Action::CreateEmpty { times } => {
+            FileOperation::CreateEmpty => {
                 Self::ensure_parent_directory_exists(path)?;
                 let _file = std::fs::File::create(path)?;
-                crate::set_file_times(path, &times)?;
-                Ok(())
             }
-
-            Action::CreateWithTemplate {
-                times,
+            FileOperation::CreateWithTemplate {
                 template_name,
                 context_str,
             } => {
                 Self::ensure_parent_directory_exists(path)?;
-                Self::create_file_with_template(
-                    path,
-                    &times,
-                    &template_name,
-                    context_str.as_deref(),
-                )?;
-                Ok(())
+                Self::write_template_to_file(path, template_name, context_str.as_deref())?;
             }
-
-            Action::OverwriteWithTemplate {
-                times,
+            FileOperation::OverwriteWithTemplate {
                 template_name,
                 context_str,
             } => {
@@ -147,16 +150,41 @@ impl Action {
                     .interact()?;
 
                 if confirmation {
-                    Self::create_file_with_template(
-                        path,
-                        &times,
-                        &template_name,
-                        context_str.as_deref(),
-                    )?;
+                    Self::write_template_to_file(path, template_name, context_str.as_deref())?;
+                } else {
+                    // User declined overwrite, skip time operations too
+                    return Ok(());
                 }
-                Ok(())
+            }
+            FileOperation::NoFileOperation => {
+                // Nothing to do for file
             }
         }
+
+        // Execute time operations in sequence
+        for time_op in self.time_ops {
+            match time_op {
+                TimeOperation::SetTimes { times } => {
+                    crate::set_file_times(path, &times)?;
+                }
+                TimeOperation::AdjustTimes {
+                    adjustment_str,
+                    should_update_access,
+                    should_update_modification,
+                } => {
+                    let metadata = std::fs::metadata(path)?;
+                    let adjusted_times =
+                        adjust_file_times_from_metadata(&metadata, &adjustment_str)?
+                            .with_flags(should_update_access, should_update_modification);
+                    crate::set_file_times(path, &adjusted_times)?;
+                }
+                TimeOperation::NoTimeOperation => {
+                    // Nothing to do
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn ensure_parent_directory_exists(path: &Path) -> Result<(), anyhow::Error> {
@@ -178,9 +206,8 @@ impl Action {
         Ok(())
     }
 
-    fn create_file_with_template(
+    fn write_template_to_file(
         path: &Path,
-        times: &FileTimeSpec,
         template_name: &str,
         context_str: Option<&str>,
     ) -> Result<(), anyhow::Error> {
@@ -188,9 +215,6 @@ impl Action {
         use std::fs::File;
         use std::io::Write;
         use tera::{Context, Tera};
-
-        let mut file = File::create(path)?;
-        crate::set_file_times(path, times)?;
 
         let template_path_full = get_template_path(template_name)?;
         if !template_path_full.exists() {
@@ -214,6 +238,8 @@ impl Action {
             }
         }
         let rendered = tera.render(template_name, &context)?;
+
+        let mut file = File::create(path)?;
         file.write_all(rendered.as_bytes())?;
 
         Ok(())
