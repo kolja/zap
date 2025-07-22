@@ -96,7 +96,7 @@ pub fn parse_adjust(s: &str) -> Result<i32, anyhow::Error> {
 
     if !num.is_ascii() || num.len() % 2 != 0 || num.is_empty() || ![2, 4, 6].contains(&num.len()) {
         return Err(ZapError::ParseAdjustment {
-            reason: format!( "Invalid format '{s}', expected [-][[hh]mm]SS with 2, 4, or 6 digits" )
+            reason: format!("Invalid format '{s}', expected [-][[hh]mm]SS with 2, 4, or 6 digits"),
         }
         .into());
     }

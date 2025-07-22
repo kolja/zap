@@ -1,7 +1,7 @@
-use std::path::Path;
-use std::fs;
-use tera;
 use libloading::{Library, Symbol};
+use std::fs;
+use std::path::Path;
+use tera;
 
 use crate::errors::PluginLoadError;
 
@@ -23,7 +23,11 @@ impl Plugins {
         Plugins { libs: Vec::new() }
     }
 
-    pub fn load_plugin(&mut self, tera: &mut tera::Tera, plugin_path: &Path) -> Result<(), PluginLoadError> {
+    pub fn load_plugin(
+        &mut self,
+        tera: &mut tera::Tera,
+        plugin_path: &Path,
+    ) -> Result<(), PluginLoadError> {
         unsafe {
             let lib = Library::new(plugin_path).map_err(|e| PluginLoadError::LibraryLoad {
                 path: plugin_path.to_path_buf(),
@@ -50,7 +54,11 @@ impl Plugins {
         Ok(())
     }
 
-    pub fn load_plugins_from_dir(&mut self, tera: &mut tera::Tera, dir_path: &Path) -> Result<(), PluginLoadError> {
+    pub fn load_plugins_from_dir(
+        &mut self,
+        tera: &mut tera::Tera,
+        dir_path: &Path,
+    ) -> Result<(), PluginLoadError> {
         if !dir_path.is_dir() {
             return Err(PluginLoadError::DirectoryNotFound(dir_path.to_path_buf()));
         }
@@ -78,4 +86,3 @@ impl Plugins {
         Ok(())
     }
 }
-

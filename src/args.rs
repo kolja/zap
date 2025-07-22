@@ -17,6 +17,11 @@ pub struct ZapCli {
     #[clap(short = 'C', long, value_name = "CONTEXT", verbatim_doc_comment)]
     pub context: Option<String>,
 
+    /// always create intermediate directories if they do not exist
+    /// (analogous to `mkdir -p`)
+    #[clap(short = 'p', long, default_value = "false", verbatim_doc_comment)]
+    pub create_intermediate_dirs: bool,
+
     /// Open the file with your $EDITOR
     #[clap(short = 'o', long)]
     pub open: bool,
@@ -107,6 +112,7 @@ mod tests {
             access_time: false,       // Default when flag not specified
             modification_time: false, // Default when flag not specified
             no_create: false,
+            create_intermediate_dirs: false,
             date: None,
             timestamp: None,
             reference: None,
@@ -135,6 +141,7 @@ mod tests {
             access_time: true,        // -a flag specified
             modification_time: false, // -m flag not specified
             no_create: false,
+            create_intermediate_dirs: false,
             date: None,
             timestamp: None,
             reference: None,
@@ -160,6 +167,7 @@ mod tests {
             access_time: false,      // -a flag not specified
             modification_time: true, // -m flag specified
             no_create: false,
+            create_intermediate_dirs: false,
             date: None,
             timestamp: None,
             reference: None,
@@ -188,6 +196,7 @@ mod tests {
             access_time: true,       // -a flag specified
             modification_time: true, // -m flag specified
             no_create: false,
+            create_intermediate_dirs: false,
             date: None,
             timestamp: None,
             reference: None,

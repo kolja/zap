@@ -53,6 +53,7 @@ pub fn zap(cli: &ZapCli) -> Result<(), anyhow::Error> {
         template,
         context,
         no_create,
+        create_intermediate_dirs,
         adjust,
         date,
         timestamp,
@@ -88,6 +89,7 @@ pub fn zap(cli: &ZapCli) -> Result<(), anyhow::Error> {
         context: context.as_deref(),
         should_update_access,
         should_update_modification,
+        create_intermediate_dirs: *create_intermediate_dirs,
     };
 
     // Process each file
@@ -98,7 +100,7 @@ pub fn zap(cli: &ZapCli) -> Result<(), anyhow::Error> {
         let actions = planner.plan(path, explicit_times.as_ref())?;
 
         // Execute the actions
-        execute_actions(actions, path, filename)?;
+        execute_actions(actions, path, filename, *create_intermediate_dirs)?;
     }
 
     // Open editor if requested

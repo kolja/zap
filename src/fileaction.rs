@@ -35,6 +35,7 @@ pub struct Planner<'a> {
     pub context: Option<&'a str>,
     pub should_update_access: bool,
     pub should_update_modification: bool,
+    pub create_intermediate_dirs: bool,
 }
 
 impl<'a> Planner<'a> {
@@ -103,20 +104,25 @@ impl<'a> Planner<'a> {
 }
 
 impl Action {
-    pub fn execute(self, path: &Path, filename: &str) -> Result<(), anyhow::Error> {
+    pub fn execute(
+        self,
+        path: &Path,
+        filename: &str,
+        create_intermediate_dirs: bool,
+    ) -> Result<(), anyhow::Error> {
         match self {
             Action::Skip { reason } => {
                 println!("Skipping {filename}: {reason}");
             }
             Action::CreateEmpty => {
-                Self::ensure_parent_directory_exists(path)?;
+                Self::ensure_parent_directory_exists(path, create_intermediate_dirs)?;
                 let _file = std::fs::File::create(path)?;
             }
             Action::CreateWithTemplate {
                 template_name,
                 context_str,
             } => {
-                Self::ensure_parent_directory_exists(path)?;
+                Self::ensure_parent_directory_exists(path, create_intermediate_dirs)?;
                 Self::write_template_to_file(path, &template_name, context_str.as_deref())?;
             }
             Action::OverwriteWithTemplate {
@@ -154,19 +160,25 @@ impl Action {
         Ok(())
     }
 
-    fn ensure_parent_directory_exists(path: &Path) -> Result<(), anyhow::Error> {
+    fn ensure_parent_directory_exists(
+        path: &Path,
+        create_intermediate_dirs: bool,
+    ) -> Result<(), anyhow::Error> {
         if let Some(parent) = path.parent() {
             if parent.components().next().is_some() && !parent.exists() {
-                let confirmation = Confirm::new()
-                    .with_prompt(format!(
-                        "The directory {:?} doesn't exist. Create it?",
-                        parent.display()
-                    ))
-                    .default(false)
-                    .interact()?;
-
-                if confirmation {
+                if create_intermediate_dirs {
                     std::fs::create_dir_all(parent)?;
+                } else {
+                    let confirmation = Confirm::new()
+                        .with_prompt(format!(
+                            "The directory {:?} doesn't exist. Create it?",
+                            parent.display()
+                        ))
+                        .default(false)
+                        .interact()?;
+                    if confirmation {
+                        std::fs::create_dir_all(parent)?;
+                    }
                 }
             }
         }
@@ -217,9 +229,10 @@ pub fn execute_actions(
     actions: Vec<Action>,
     path: &Path,
     filename: &str,
+    create_intermediate_dirs: bool,
 ) -> Result<(), anyhow::Error> {
     for action in actions {
-        action.execute(path, filename)?;
+        action.execute(path, filename, create_intermediate_dirs)?;
     }
     Ok(())
 }
