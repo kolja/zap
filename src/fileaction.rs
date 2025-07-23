@@ -178,6 +178,8 @@ impl Action {
                         .interact()?;
                     if confirmation {
                         std::fs::create_dir_all(parent)?;
+                    } else {
+                        return Err(ZapError::UserDeclinedDirCreation.into());
                     }
                 }
             }

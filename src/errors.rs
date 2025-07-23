@@ -150,6 +150,9 @@ pub enum ZapError {
 
     #[error("User declined to overwrite file")]
     UserDeclinedOverwrite,
+
+    #[error("User declined to create directory")]
+    UserDeclinedDirCreation,
 }
 
 // Provide a direct conversion from tera::Error to ZapError for convenience

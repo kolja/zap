@@ -2,9 +2,9 @@ use clap::Parser;
 use clap::builder::ArgPredicate;
 
 #[derive(Parser, Debug)]
-#[clap(name = "zap", author, version, about = "touch, but with templates", long_about = None)]
+#[clap(name = "zap", author, version, about = "touch, but with templates", long_about = None, arg_required_else_help(true))]
 pub struct ZapCli {
-    #[clap(value_parser)]
+    #[clap(value_parser, required = true, num_args = 1..)]
     pub filenames: Vec<String>,
 
     /// Optional template name to pre-populate the file.
