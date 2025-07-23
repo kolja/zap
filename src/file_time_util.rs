@@ -225,10 +225,78 @@ pub fn adjust_file_times_from_metadata(
     FileTimeSpec::from_metadata(metadata).adjust_by_string(adjustment_str)
 }
 
+/// Sets both atime and mtime, handling symlinks appropriately.
+/// Uses a single syscall for efficiency when setting both times.
+pub fn set_both_times(
+    path: &std::path::Path,
+    atime: FileTime,
+    mtime: FileTime,
+    symlink_only: bool,
+) -> Result<(), ZapError> {
+    if symlink_only {
+        filetime::set_symlink_file_times(path, atime, mtime).map_err(ZapError::SetTimesError)
+    } else {
+        filetime::set_file_times(path, atime, mtime).map_err(ZapError::SetTimesError)
+    }
+}
+
+/// Sets only the access time, handling symlinks appropriately.
+/// For symlinks, we need to preserve the existing mtime.
+pub fn set_access_time_only(
+    path: &std::path::Path,
+    atime: FileTime,
+    symlink_only: bool,
+) -> Result<(), ZapError> {
+    if symlink_only {
+        // For symlinks, we need to get the current mtime to preserve it
+        let metadata = std::fs::symlink_metadata(path)?;
+        let mtime = filetime::FileTime::from_last_modification_time(&metadata);
+        filetime::set_symlink_file_times(path, atime, mtime).map_err(ZapError::SetTimesError)
+    } else {
+        filetime::set_file_atime(path, atime).map_err(ZapError::SetTimesError)
+    }
+}
+
+/// Sets only the modification time, handling symlinks appropriately.
+/// For symlinks, we need to preserve the existing atime.
+pub fn set_modification_time_only(
+    path: &std::path::Path,
+    mtime: FileTime,
+    symlink_only: bool,
+) -> Result<(), ZapError> {
+    if symlink_only {
+        // For symlinks, we need to get the current atime to preserve it
+        let metadata = std::fs::symlink_metadata(path)?;
+        let atime = filetime::FileTime::from_last_access_time(&metadata);
+        filetime::set_symlink_file_times(path, atime, mtime).map_err(ZapError::SetTimesError)
+    } else {
+        filetime::set_file_mtime(path, mtime).map_err(ZapError::SetTimesError)
+    }
+}
+
+/// Sets file times based on the provided FileTimeSpec and symlink mode.
+/// This function handles the logic for different combinations of atime/mtime settings,
+/// applying the appropriate filetime functions based on whether we're operating on a symlink or regular file.
+pub fn set_times_with_mode(
+    path: &std::path::Path,
+    times: &FileTimeSpec,
+    symlink_only: bool,
+) -> Result<(), ZapError> {
+    match (times.atime, times.mtime) {
+        (Some(atime), Some(mtime)) => set_both_times(path, atime, mtime, symlink_only),
+        (Some(atime), None) => set_access_time_only(path, atime, symlink_only),
+        (None, Some(mtime)) => set_modification_time_only(path, mtime, symlink_only),
+        (None, None) => Ok(()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::TimeZone;
+    use std::fs::File;
+    use std::path::Path;
+    use tempfile::tempdir;
 
     #[test]
     fn test_datetime_conversion() {
@@ -382,5 +450,100 @@ mod tests {
             adjusted_access.atime.unwrap().unix_seconds(),
             dt.timestamp() - 1801
         );
+    }
+
+    #[test]
+    fn test_set_times_with_mode() {
+        // Create a temporary directory for test files
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test_file.txt");
+
+        // Create the test file
+        let _ = File::create(&file_path).unwrap();
+
+        // Current time to set
+        let dt = Utc::now();
+        let file_time = FileTime::from_unix_time(dt.timestamp(), dt.timestamp_subsec_nanos());
+
+        // Test with both times set
+        let times = FileTimeSpec::both(file_time);
+        assert!(set_times_with_mode(Path::new(&file_path), &times, false).is_ok());
+
+        // Test with only access time set
+        let access_only = FileTimeSpec::access_only(file_time);
+        assert!(set_times_with_mode(Path::new(&file_path), &access_only, false).is_ok());
+
+        // Test with only modification time set
+        let mtime_only = FileTimeSpec::modification_only(file_time);
+        assert!(set_times_with_mode(Path::new(&file_path), &mtime_only, false).is_ok());
+
+        // Test with no times set (should do nothing)
+        let neither = FileTimeSpec {
+            atime: None,
+            mtime: None,
+        };
+        assert!(set_times_with_mode(Path::new(&file_path), &neither, false).is_ok());
+    }
+
+    #[test]
+    fn test_set_both_times() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test_both.txt");
+        let _ = File::create(&file_path).unwrap();
+
+        let dt = Utc::now();
+        let file_time = FileTime::from_unix_time(dt.timestamp(), dt.timestamp_subsec_nanos());
+
+        // Test with regular file
+        assert!(set_both_times(Path::new(&file_path), file_time, file_time, false).is_ok());
+
+        // Verify the times were set
+        let metadata = std::fs::metadata(&file_path).unwrap();
+        let atime = FileTime::from_last_access_time(&metadata);
+        let mtime = FileTime::from_last_modification_time(&metadata);
+
+        // FileTime doesn't implement Eq, so compare the unix seconds
+        assert_eq!(atime.unix_seconds(), file_time.unix_seconds());
+        assert_eq!(mtime.unix_seconds(), file_time.unix_seconds());
+    }
+
+    #[test]
+    fn test_set_access_time_only() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test_atime.txt");
+        let _ = File::create(&file_path).unwrap();
+
+        // Create a distinct time
+        let dt = Utc::now();
+        let file_time = FileTime::from_unix_time(dt.timestamp(), dt.timestamp_subsec_nanos());
+
+        // Set only the access time
+        assert!(set_access_time_only(Path::new(&file_path), file_time, false).is_ok());
+
+        // Verify that only the access time was changed
+        let metadata = std::fs::metadata(&file_path).unwrap();
+        let atime = FileTime::from_last_access_time(&metadata);
+
+        assert_eq!(atime.unix_seconds(), file_time.unix_seconds());
+    }
+
+    #[test]
+    fn test_set_modification_time_only() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test_mtime.txt");
+        let _ = File::create(&file_path).unwrap();
+
+        // Create a distinct time
+        let dt = Utc::now();
+        let file_time = FileTime::from_unix_time(dt.timestamp(), dt.timestamp_subsec_nanos());
+
+        // Set only the modification time
+        assert!(set_modification_time_only(Path::new(&file_path), file_time, false).is_ok());
+
+        // Verify that only the modification time was changed
+        let metadata = std::fs::metadata(&file_path).unwrap();
+        let mtime = FileTime::from_last_modification_time(&metadata);
+
+        assert_eq!(mtime.unix_seconds(), file_time.unix_seconds());
     }
 }

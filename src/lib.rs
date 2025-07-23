@@ -1,5 +1,5 @@
 use dirs::home_dir;
-use filetime::{self, set_file_atime, set_file_mtime};
+
 use std::path::{Path, PathBuf};
 
 pub mod args;
@@ -37,45 +37,13 @@ pub fn set_file_times(
     symlink_only: bool,
 ) -> Result<(), ZapError> {
     match (times.atime, times.mtime) {
-        (Some(atime), Some(mtime)) =>
-        // Both: use the combined call for efficiency (only one syscall)
-        {
-            if symlink_only {
-                filetime::set_symlink_file_times(path, atime, mtime)
-                    .map_err(ZapError::SetTimesError)
-            } else {
-                filetime::set_file_times(path, atime, mtime).map_err(ZapError::SetTimesError)
-            }
+        (Some(atime), Some(mtime)) => {
+            // Both: use the combined call for efficiency (only one syscall)
+            file_time_util::set_both_times(path, atime, mtime, symlink_only)
         }
-        (Some(atime), None) => {
-            if symlink_only {
-                // For symlinks, we need to get the current mtime to preserve it
-                let metadata = if symlink_only {
-                    std::fs::symlink_metadata(path)?
-                } else {
-                    std::fs::metadata(path)?
-                };
-                let mtime = filetime::FileTime::from_last_modification_time(&metadata);
-                filetime::set_symlink_file_times(path, atime, mtime)
-                    .map_err(ZapError::SetTimesError)
-            } else {
-                set_file_atime(path, atime).map_err(ZapError::SetTimesError)
-            }
-        }
+        (Some(atime), None) => file_time_util::set_access_time_only(path, atime, symlink_only),
         (None, Some(mtime)) => {
-            if symlink_only {
-                // For symlinks, we need to get the current atime to preserve it
-                let metadata = if symlink_only {
-                    std::fs::symlink_metadata(path)?
-                } else {
-                    std::fs::metadata(path)?
-                };
-                let atime = filetime::FileTime::from_last_access_time(&metadata);
-                filetime::set_symlink_file_times(path, atime, mtime)
-                    .map_err(ZapError::SetTimesError)
-            } else {
-                set_file_mtime(path, mtime).map_err(ZapError::SetTimesError)
-            }
+            file_time_util::set_modification_time_only(path, mtime, symlink_only)
         }
         (None, None) => Ok(()),
     }
