@@ -2,6 +2,8 @@ use std::fs::{self, File};
 use std::path::Path;
 use std::process::Command;
 use std::time::{Duration, SystemTime};
+use std::io::Write;
+use std::os::unix::fs as unix_fs;
 use tempfile::TempDir;
 
 fn get_file_times(path: &Path) -> (SystemTime, SystemTime) {
@@ -207,6 +209,52 @@ fn test_adjust_flag_with_access_only() {
     assert_eq!(
         new_mtime, initial_mtime,
         "Modification time should NOT have been adjusted"
+    );
+}
+
+#[test]
+fn test_symlink_option_updates_link_times() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let target_path = temp_dir.path().join("target.txt");
+    let symlink_path = temp_dir.path().join("symlink.txt");
+
+    // Create a target file
+    let mut file = File::create(&target_path).unwrap();
+    file.write_all(b"Target file content").unwrap();
+    drop(file);
+
+    // Create a symlink to the target
+    unix_fs::symlink(&target_path, &symlink_path).unwrap();
+
+    // Get original timestamps for both the symlink and target
+    let original_target_metadata = fs::metadata(&target_path).unwrap();
+    let original_symlink_metadata = fs::symlink_metadata(&symlink_path).unwrap();
+
+    // Sleep to ensure enough time passes for timestamps to be different
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    // Update the symlink timestamp with --symlink option
+    let output = Command::new("cargo")
+        .args(["run", "--", "--symlink", symlink_path.to_str().unwrap()])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+
+    // Check that symlink's timestamp was updated but not the target file
+    let new_target_metadata = fs::metadata(&target_path).unwrap();
+    let new_symlink_metadata = fs::symlink_metadata(&symlink_path).unwrap();
+
+    // Target file should maintain its timestamps
+    assert_eq!(
+        original_target_metadata.modified().unwrap(),
+        new_target_metadata.modified().unwrap()
+    );
+
+    // Symlink should have updated timestamps
+    assert_ne!(
+        original_symlink_metadata.modified().unwrap(),
+        new_symlink_metadata.modified().unwrap()
     );
 }
 

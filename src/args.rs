@@ -1,9 +1,14 @@
-use clap::Parser;
 use clap::builder::ArgPredicate;
+use clap::{ArgAction, CommandFactory, Parser};
+use std::env;
 
 #[derive(Parser, Debug)]
 #[clap(name = "zap", author, version, about = "touch, but with templates", long_about = None, arg_required_else_help(true))]
+#[clap(disable_help_flag = true)] // We'll handle the help flag manually
 pub struct ZapCli {
+    /// Show help information
+    #[clap(short = 'h', long = "help", action = ArgAction::Help)]
+    pub help: Option<bool>,
     #[clap(value_parser, required = true, num_args = 1..)]
     pub filenames: Vec<String>,
 
@@ -38,9 +43,15 @@ pub struct ZapCli {
     #[clap(
         short = 'c',
         long,
-        default_value_if("adjust", ArgPredicate::IsPresent, "true") // -c implied if -A is used
+        default_value_if("adjust", ArgPredicate::IsPresent, "true"), // -c implied if -A is used
+        default_value_if("symlink_only", ArgPredicate::IsPresent, "true") // -c implied if -h is used
     )]
     pub no_create: bool,
+
+    /// If the file is a symbolic link, change the times of the link itself rather than the file that the link points to
+    /// Note that this implies -c and thus will not create any new files
+    #[clap(long = "symlink")]
+    pub symlink_only: bool,
 
     /// pass date as human readable string (RFC3339)
     #[clap(
@@ -83,10 +94,47 @@ pub struct ZapCli {
 }
 
 impl ZapCli {
+    /// Process command line arguments and check for -h being used for symlink.
+    /// If "-h" is passed without any other arguments, it's treated as help.
+    /// Otherwise, it's treated as the symlink_only flag.
+    pub fn process_h_flag() -> Self {
+        let args: Vec<String> = env::args().collect();
+
+        // Check if we have only "-h" without other arguments
+        if args.len() == 2 && args[1] == "-h" {
+            // Show help and exit
+            let mut app = Self::command();
+            app.print_help().unwrap();
+            std::process::exit(0);
+        }
+
+        // Look for "-h" and replace it with "--symlink" for clap processing
+        let processed_args: Vec<String> = args
+            .into_iter()
+            .map(|arg| {
+                if arg == "-h" {
+                    "--symlink".to_string()
+                } else {
+                    arg
+                }
+            })
+            .collect();
+
+        // Use the processed args
+        Self::parse_from(processed_args)
+    }
+
     /// Determine which times should be updated based on the -a and -m flags.
     /// Following touch command behavior:
     /// - If neither -a nor -m or both -a and -m are specified: update both times
     /// - If only either -a or -m are specified: update only the respective times
+    /// Convenience method to check if symlink_only is set, and if so, ensure no_create is also set
+    pub fn ensure_no_create_if_symlink(&mut self) {
+        if self.symlink_only {
+            self.no_create = true;
+        }
+    }
+
     pub fn should_update_times(&self) -> (bool, bool) {
         match (self.access_time, self.modification_time) {
             (false, false) => (true, true), // Neither specified: update both
@@ -105,6 +153,7 @@ mod tests {
     fn test_should_update_times_default_behavior() {
         // When neither -a nor -m is specified, both should be updated
         let cli = ZapCli {
+            help: None,
             filenames: vec!["test.txt".to_string()],
             template: None,
             context: None,
@@ -117,6 +166,7 @@ mod tests {
             timestamp: None,
             reference: None,
             adjust: None,
+            symlink_only: false,
         };
 
         let (update_access, update_modification) = cli.should_update_times();
@@ -134,6 +184,7 @@ mod tests {
     fn test_should_update_times_access_only() {
         // When only -a is specified, only access time should be updated
         let cli = ZapCli {
+            help: None,
             filenames: vec!["test.txt".to_string()],
             template: None,
             context: None,
@@ -146,6 +197,7 @@ mod tests {
             timestamp: None,
             reference: None,
             adjust: None,
+            symlink_only: false,
         };
 
         let (update_access, update_modification) = cli.should_update_times();
@@ -160,6 +212,7 @@ mod tests {
     fn test_should_update_times_modification_only() {
         // When only -m is specified, only modification time should be updated
         let cli = ZapCli {
+            help: None,
             filenames: vec!["test.txt".to_string()],
             template: None,
             context: None,
@@ -172,6 +225,7 @@ mod tests {
             timestamp: None,
             reference: None,
             adjust: None,
+            symlink_only: false,
         };
 
         let (update_access, update_modification) = cli.should_update_times();
@@ -189,6 +243,7 @@ mod tests {
     fn test_should_update_times_both_flags() {
         // When both -a and -m are specified, both times should be updated
         let cli = ZapCli {
+            help: None,
             filenames: vec!["test.txt".to_string()],
             template: None,
             context: None,
@@ -201,6 +256,7 @@ mod tests {
             timestamp: None,
             reference: None,
             adjust: None,
+            symlink_only: false,
         };
 
         let (update_access, update_modification) = cli.should_update_times();

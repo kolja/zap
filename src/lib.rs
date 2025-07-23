@@ -31,15 +31,52 @@ fn get_template_path(template_name: &str) -> Result<PathBuf, ZapError> {
     Ok(template_path)
 }
 
-pub fn set_file_times(path: &Path, times: &FileTimeSpec) -> Result<(), ZapError> {
+pub fn set_file_times(
+    path: &Path,
+    times: &FileTimeSpec,
+    symlink_only: bool,
+) -> Result<(), ZapError> {
     match (times.atime, times.mtime) {
         (Some(atime), Some(mtime)) =>
         // Both: use the combined call for efficiency (only one syscall)
         {
-            filetime::set_file_times(path, atime, mtime).map_err(ZapError::SetTimesError)
+            if symlink_only {
+                filetime::set_symlink_file_times(path, atime, mtime)
+                    .map_err(ZapError::SetTimesError)
+            } else {
+                filetime::set_file_times(path, atime, mtime).map_err(ZapError::SetTimesError)
+            }
         }
-        (Some(atime), None) => set_file_atime(path, atime).map_err(ZapError::SetTimesError),
-        (None, Some(mtime)) => set_file_mtime(path, mtime).map_err(ZapError::SetTimesError),
+        (Some(atime), None) => {
+            if symlink_only {
+                // For symlinks, we need to get the current mtime to preserve it
+                let metadata = if symlink_only {
+                    std::fs::symlink_metadata(path)?
+                } else {
+                    std::fs::metadata(path)?
+                };
+                let mtime = filetime::FileTime::from_last_modification_time(&metadata);
+                filetime::set_symlink_file_times(path, atime, mtime)
+                    .map_err(ZapError::SetTimesError)
+            } else {
+                set_file_atime(path, atime).map_err(ZapError::SetTimesError)
+            }
+        }
+        (None, Some(mtime)) => {
+            if symlink_only {
+                // For symlinks, we need to get the current atime to preserve it
+                let metadata = if symlink_only {
+                    std::fs::symlink_metadata(path)?
+                } else {
+                    std::fs::metadata(path)?
+                };
+                let atime = filetime::FileTime::from_last_access_time(&metadata);
+                filetime::set_symlink_file_times(path, atime, mtime)
+                    .map_err(ZapError::SetTimesError)
+            } else {
+                set_file_mtime(path, mtime).map_err(ZapError::SetTimesError)
+            }
+        }
         (None, None) => Ok(()),
     }
 }
@@ -58,6 +95,7 @@ pub fn zap(cli: &ZapCli) -> Result<(), anyhow::Error> {
         date,
         timestamp,
         reference,
+        symlink_only,
         ..
     } = cli;
 
@@ -90,6 +128,7 @@ pub fn zap(cli: &ZapCli) -> Result<(), anyhow::Error> {
         should_update_access,
         should_update_modification,
         create_intermediate_dirs: *create_intermediate_dirs,
+        symlink_only: *symlink_only,
     };
 
     // Process each file

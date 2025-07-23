@@ -20,11 +20,13 @@ pub enum Action {
     },
     SetTimes {
         times: FileTimeSpec,
+        symlink_only: bool,
     },
     AdjustTimes {
         adjustment_str: String,
         should_update_access: bool,
         should_update_modification: bool,
+        symlink_only: bool,
     },
 }
 
@@ -36,6 +38,7 @@ pub struct Planner<'a> {
     pub should_update_access: bool,
     pub should_update_modification: bool,
     pub create_intermediate_dirs: bool,
+    pub symlink_only: bool,
 }
 
 impl<'a> Planner<'a> {
@@ -75,6 +78,7 @@ impl<'a> Planner<'a> {
                     times.with_flags(self.should_update_access, self.should_update_modification);
                 actions.push(Action::SetTimes {
                     times: flagged_times,
+                    symlink_only: self.symlink_only,
                 });
             }
             (None, false) => {
@@ -83,6 +87,7 @@ impl<'a> Planner<'a> {
                     .with_flags(self.should_update_access, self.should_update_modification);
                 actions.push(Action::SetTimes {
                     times: current_times,
+                    symlink_only: self.symlink_only,
                 });
             }
             (None, true) => {
@@ -96,6 +101,7 @@ impl<'a> Planner<'a> {
                 adjustment_str: adjustment_str.to_string(),
                 should_update_access: self.should_update_access,
                 should_update_modification: self.should_update_modification,
+                symlink_only: self.symlink_only,
             });
         }
 
@@ -143,18 +149,26 @@ impl Action {
                     return Err(ZapError::UserDeclinedOverwrite.into());
                 }
             }
-            Action::SetTimes { times } => {
-                crate::set_file_times(path, &times)?;
+            Action::SetTimes {
+                times,
+                symlink_only,
+            } => {
+                crate::set_file_times(path, &times, symlink_only)?;
             }
             Action::AdjustTimes {
                 adjustment_str,
                 should_update_access,
                 should_update_modification,
+                symlink_only,
             } => {
-                let metadata = std::fs::metadata(path)?;
+                let metadata = if symlink_only {
+                    std::fs::symlink_metadata(path)?
+                } else {
+                    std::fs::metadata(path)?
+                };
                 let adjusted_times = adjust_file_times_from_metadata(&metadata, &adjustment_str)?
                     .with_flags(should_update_access, should_update_modification);
-                crate::set_file_times(path, &adjusted_times)?;
+                crate::set_file_times(path, &adjusted_times, symlink_only)?;
             }
         }
         Ok(())
