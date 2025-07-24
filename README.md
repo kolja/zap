@@ -1,8 +1,15 @@
 
+<img src="./zap.svg">
 
-# ZAP
+![latest](https://img.shields.io/github/v/tag/kolja/zap)
+[![build](https://github.com/kolja/zap/actions/workflows/rust.yml/badge.svg)](https://github.com/kolja/zap/actions)
+[![Coverage Status](https://coveralls.io/repos/github/kolja/zap/badge.svg?branch=main)](https://coveralls.io/github/kolja/zap?branch=main)
+[![dependency status](https://deps.rs/repo/github/kolja/zap/status.svg?path=%2F)](https://deps.rs/repo/github/kolja/zap?path=%2F)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-touch, but with templates!
+## touch, but with templates!
+
+`zap` can be used as a drop-in replacement for `touch`, but it also allows you to create files pre-populated from templates. It can open newly created files with your `$EDITOR` and create intermediate directories if they do not exist.
 
 ## Installation
 
