@@ -1,5 +1,5 @@
 
-<img src="./zap.svg">
+<img src="./zap.svg" width="70%" alt="a cat's paw struck by lightning from the letters `zap`" />
 
 ![latest](https://img.shields.io/github/v/tag/kolja/zap)
 [![build](https://github.com/kolja/zap/actions/workflows/rust.yml/badge.svg)](https://github.com/kolja/zap/actions)
