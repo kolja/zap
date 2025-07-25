@@ -1,9 +1,8 @@
-# default.nix for v0.1.4
 { pkgs ? import <nixpkgs> {} }:
 
 let
   inherit (pkgs) lib rustPlatform fetchFromGitHub;
-  version = "0.1.4";
+  version = "0.1.5";
 in
 rustPlatform.buildRustPackage {
   pname = "zap";
@@ -13,12 +12,11 @@ rustPlatform.buildRustPackage {
     owner = "kolja";
     repo = "zap";
     rev = "v${version}";
-    # New hash from `nix-prefetch-url --unpack`
-    hash = "sha256-yourNewSourceHashHere";
+    hash = "sha256-uzGJnLjJXhxe4HWFL5FJCOXXAp1uJdtDEGTPlRGnJ64=";
   };
 
-  # New hash from the failed build output
-  cargoHash = "sha256-yourNewCargoHashHere";
+  # New cargo hash after downgrading edition
+  cargoHash = "sha256-q3mQ/pQp3yX9gJGf8zC+t4fE88o2/nB8bU8cO+3D75w=";
 
   meta = with lib; {
     description = "`touch`, but with templates!";
