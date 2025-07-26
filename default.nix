@@ -12,12 +12,10 @@ rustPlatform.buildRustPackage {
     owner = "kolja";
     repo = "zap";
     rev = "v${version}";
-    hash = "sha256-uzGJnLjJXhxe4HWFL5FJCOXXAp1uJdtDEGTPlRGnJ64=";
+    hash = "sha256-uL5FqWRDnFuhWyblzxbNDBfybGYFcPhX/e5aXqQ8d0A=";
   };
 
-  # New cargo hash after downgrading edition
-  cargoHash = "sha256-q3mQ/pQp3yX9gJGf8zC+t4fE88o2/nB8bU8cO+3D75w=";
-
+  cargoHash = "sha256-nDRF0ZrN7U89ul7UmEihYK1B0LoqXh0EgiRrKC7fsKw=";
   meta = with lib; {
     description = "`touch`, but with templates!";
     homepage = "https://github.com/kolja/zap";

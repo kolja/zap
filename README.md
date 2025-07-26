@@ -5,7 +5,7 @@
 [![build](https://github.com/kolja/zap/actions/workflows/rust.yml/badge.svg)](https://github.com/kolja/zap/actions)
 [![Coverage Status](https://coveralls.io/repos/github/kolja/zap/badge.svg?branch=main)](https://coveralls.io/github/kolja/zap?branch=main)
 [![dependency status](https://deps.rs/repo/github/kolja/zap/status.svg?path=%2F)](https://deps.rs/repo/github/kolja/zap?path=%2F)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 ## touch, but with templates!
 
