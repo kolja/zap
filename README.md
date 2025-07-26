@@ -13,9 +13,23 @@
 
 ## Installation
 
+### Homebrew
+
 ```bash
 brew tap kolja/zap https://github.com/kolja/zap
 brew install kolja/zap/zap
+```
+
+### Nix
+
+Install into your profile:
+```bash
+nix profile install github:kolja/zap
+```
+
+**Run without installing:**
+```bash
+nix run github:kolja/zap -- --version
 ```
 
 ## Usage
