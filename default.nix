@@ -15,7 +15,7 @@ rustPlatform.buildRustPackage {
     hash = "sha256-uL5FqWRDnFuhWyblzxbNDBfybGYFcPhX/e5aXqQ8d0A=";
   };
 
-  cargoHash = "sha256-nDRF0ZrN7U89ul7UmEihYK1B0LoqXh0EgiRrKC7fsKw=";
+  cargoHash = "sha256-YUQjwldX3VZqa2vF4D2hTF6wYzeKOoWTi0lu8i1ADkc=";
   meta = with lib; {
     description = "`touch`, but with templates!";
     homepage = "https://github.com/kolja/zap";
