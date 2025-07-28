@@ -1,5 +1,6 @@
 use dirs::home_dir;
 
+use std::env;
 use std::path::{Path, PathBuf};
 
 pub mod args;
@@ -11,13 +12,18 @@ pub mod plugins;
 
 use anyhow::Result;
 
-// use crate::parsedate;
 use crate::args::ZapCli;
 use crate::errors::ZapError;
 use crate::file_time_util::FileTimeSpec;
-use crate::fileaction::{Planner, execute_actions, open_in_editor};
+use crate::fileaction::{execute_actions, open_in_editor, Planner};
 
 fn get_config_dir() -> Result<PathBuf, ZapError> {
+    // Check for ZAP_CONFIG environment variable first
+    if let Ok(custom_dir) = env::var("ZAP_CONFIG") {
+        return Ok(PathBuf::from(custom_dir));
+    }
+
+    // Fall back to default location: $HOME/.config/zap
     let conf_dir: Option<PathBuf> = home_dir();
     conf_dir
         .ok_or(ZapError::ConfigDirNotFound)
@@ -119,3 +125,4 @@ pub fn zap(cli: &ZapCli) -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+

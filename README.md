@@ -34,6 +34,20 @@ nix run github:kolja/zap -- --version
 
 ## Usage
 
+`zap` works pretty much exactly like `touch` but it has some additional features:
+
+When you specify the `-T <template_name>`, it will look for a template file in
+
+```
+    $ZAP_CONFIG/templates/<template_name>
+```
+
+Any newly created file will be pre-populated with contents from the template.
+If `ZAP_CONFIG` is not set, it defaults to `~/.config/zap/`.
+
+You can also pass a context with the `-C` (or `--context`) to pass key-value pairs to the template.
+
+
 ```
 Usage: zap [OPTIONS] [FILENAMES]...
 
