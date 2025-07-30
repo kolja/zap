@@ -59,8 +59,10 @@ impl Plugins {
         tera: &mut tera::Tera,
         dir_path: &Path,
     ) -> Result<(), PluginLoadError> {
+
+        // If the plugins directory doesn't exist, just return OK without loading any plugins
         if !dir_path.is_dir() {
-            return Err(PluginLoadError::DirectoryNotFound(dir_path.to_path_buf()));
+            return Ok(());
         }
 
         for entry in fs::read_dir(dir_path).map_err(|e| PluginLoadError::DirectoryRead {

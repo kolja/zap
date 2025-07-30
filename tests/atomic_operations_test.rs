@@ -101,12 +101,6 @@ fn test_set_specific_time_then_adjust() {
         .duration_since(expected_time)
         .unwrap_or_else(|_| expected_time.duration_since(mtime).unwrap());
 
-    println!("Expected time: {:?}", expected_time);
-    println!("Actual atime: {:?}", atime);
-    println!("Actual mtime: {:?}", mtime);
-    println!("Atime diff: {:?}", atime_diff);
-    println!("Mtime diff: {:?}", mtime_diff);
-
     assert!(
         atime_diff < Duration::from_secs(2),
         "Access time should be Jan 1, 2023 01:00 (00:00 + 1 hour). Expected: {:?}, Got: {:?}, Diff: {:?}",
@@ -237,12 +231,14 @@ fn test_create_with_template_and_specific_time() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let test_file = temp_dir.path().join("templated.txt");
 
-    // Create a simple template file for testing
-    let config_dir = temp_dir.path().join(".config").join("zap");
+    let config_dir = temp_dir.path()
+        .join(".config")
+        .join("zap");
+
     let template_dir = config_dir.join("templates");
-    let plugins_dir = config_dir.join("plugins");
+
     std::fs::create_dir_all(&template_dir).expect("Failed to create template directory");
-    std::fs::create_dir_all(&plugins_dir).expect("Failed to create plugins directory");
+
     let template_file = template_dir.join("simple");
     std::fs::write(&template_file, "Hello, world!").expect("Failed to create template");
 
@@ -280,7 +276,7 @@ fn test_create_with_template_and_specific_time() {
             &future_timestamp, // Set to specific future time
             test_file.to_str().unwrap(),
         ])
-        .env("HOME", temp_dir.path()) // Point HOME to temp dir so it finds our template
+        .env("ZAP_CONFIG", config_dir)
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("Failed to execute zap command");
@@ -307,20 +303,6 @@ fn test_create_with_template_and_specific_time() {
         .unwrap_or_else(|_| future_time.duration_since(mtime).unwrap());
 
     let timestamp_tolerance = Duration::from_secs(2);
-
-    println!(
-        "OS: {}, using tolerance: {:?}",
-        env::consts::OS,
-        timestamp_tolerance
-    );
-    println!(
-        "Future time: {:?}, Actual atime: {:?}, Diff: {:?}",
-        future_time, atime, atime_diff
-    );
-    println!(
-        "Future time: {:?}, Actual mtime: {:?}, Diff: {:?}",
-        future_time, mtime, mtime_diff
-    );
 
     // On Linux, only check modification time as access time behaves differently
     if env::consts::OS == "linux" {
